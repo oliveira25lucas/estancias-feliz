@@ -1,9 +1,10 @@
 /**
  * Fonte única de verdade sobre o Sítio Estâncias Feliz.
  *
- * Estes dados foram extraídos do workflow "Atendimento Sítio v3" do n8n,
- * que alimenta a Júlia (atendente de IA do WhatsApp). Manter este arquivo
- * e o workflow em sincronia — se um preço ou regra mudar aqui, mude lá também.
+ * O agente de IA do WhatsApp (Júlia) usa a mesma descrição, montada no
+ * nó "Montar Resposta" do workflow v4 no n8n. Se algo mudar aqui, mude
+ * lá também — informação divergente entre o site e o WhatsApp confunde
+ * o cliente na hora errada.
  */
 
 export const CONTATO = {
@@ -17,18 +18,37 @@ export const CONTATO = {
   telefoneFormatado: "(31) 97139-7781",
   email: "sitioestanciasfeliz@gmail.com",
   instagram: "https://www.instagram.com/estanciasfeliz/",
-  airbnb:
-    "https://www.airbnb.com.br/rooms/1041082439031208384",
+  airbnb: "https://www.airbnb.com.br/rooms/1041082439031208384",
+  /** Perfil do Google, com avaliações. */
+  google: "https://share.google/oM2pUBLHVFb8oxk9n",
 } as const;
 
 export const LOCALIZACAO = {
-  endereco: "Rod. BH-Brumadinho (MG-040), Km 30",
-  referencia: "Referência: Floricultura Sarzedo",
+  endereco: "Rod. MG-040, Km 30",
+  bairro: "Zona Rural",
   cidade: "Sarzedo",
   estado: "MG",
+  cep: "32450-000",
+  referencia: "Referência: Floricultura Sarzedo",
+  /** Coordenadas do pino no Google Maps — usadas no mapa e no SEO local. */
+  latitude: -20.0319993,
+  longitude: -44.1250467,
+  /**
+   * Link montado a partir do endereço, não encurtado: link curto
+   * quebra quando o dono do perfil muda alguma coisa.
+   */
+  maps:
+    "https://www.google.com/maps/search/?api=1&query=" +
+    encodeURIComponent(
+      "Sítio Estâncias Feliz, Rod. MG-040, Km 30, Zona Rural, Sarzedo - MG, 32450-000",
+    ),
   waze: "https://waze.com/ul/h7h2w5cm1h",
-  maps: "https://maps.app.goo.gl/7zhGHoEc1by1sEtc8?g_st=iw",
 } as const;
+
+/** Endereço em uma linha, para exibição. */
+export const ENDERECO_COMPLETO =
+  `${LOCALIZACAO.endereco} — ${LOCALIZACAO.bairro}, ` +
+  `${LOCALIZACAO.cidade} - ${LOCALIZACAO.estado}, ${LOCALIZACAO.cep}`;
 
 export const HORARIOS = {
   checkinSemana: "6h",
@@ -38,11 +58,15 @@ export const HORARIOS = {
 } as const;
 
 export const CAPACIDADE = {
+  /** Camas e colchões disponíveis hoje. É o número honesto para o site. */
+  dormirAtual: 25,
+  /** Limite da casa, se houver estrutura extra combinada. */
   dormirMax: 30,
-  camas: 25,
   quartos: 6,
   suites: 1,
   banheiros: 3,
+  vestiarios: 2,
+  lavabos: 2,
   eventoMax: 200,
 } as const;
 
@@ -53,9 +77,19 @@ export const ESTRUTURA = [
     icone: "home" as const,
     itens: [
       "6 quartos, sendo 1 suíte",
-      "3 banheiros completos",
-      "Acomoda até 30 pessoas para dormir (25 camas e colchões)",
-      "TV e Wi-Fi",
+      "Espaço para 25 pessoas dormirem",
+      "Wi-Fi via Starlink — internet rápida mesmo na zona rural",
+      "TV na área social",
+    ],
+  },
+  {
+    titulo: "Banheiros e vestiários",
+    icone: "bath" as const,
+    itens: [
+      "3 banheiros completos na casa",
+      "2 vestiários, cada um com 3 vasos e 1 chuveiro",
+      "2 lavabos, com um vaso cada",
+      "Estrutura pensada para grupo grande não fazer fila",
     ],
   },
   {
@@ -64,7 +98,7 @@ export const ESTRUTURA = [
     itens: [
       "Piscina com profundidade de 1,40m a 1,90m",
       "Cascata funcionando das 9h às 12h e das 14h às 17h",
-      "Hidromassagem disponível (opcional, R$ 150 por diária)",
+      "Hidromassagem disponível (opcional, por diária)",
       "Quadra de vôlei e peteca",
     ],
   },
@@ -73,10 +107,9 @@ export const ESTRUTURA = [
     icone: "party" as const,
     itens: [
       "52 cadeiras e 15 mesas",
-      "2 vestiários e 2 lavabos",
+      "Coberto — chuva não atrapalha o seu dia",
       "Churrasqueira",
       "Mesa de sinuca",
-      "Som liberado em qualquer horário",
     ],
   },
   {
@@ -109,20 +142,29 @@ export const PAGAMENTO = {
     "Caução de R$ 500, devolvida integralmente se estiver tudo certo.",
 } as const;
 
-export const OBSERVACOES_PISCINA =
-  "A piscina não é aquecida." as const;
+export const OBSERVACOES_PISCINA = "A piscina não é aquecida." as const;
 
 /** Perguntas que a Júlia mais recebe no WhatsApp. */
 export const FAQ = [
   {
     pergunta: "Quantas pessoas o sítio acomoda?",
     resposta:
-      "Para dormir, até 30 pessoas, com 25 camas e colchões distribuídos em 6 quartos (1 suíte) e 3 banheiros. Para eventos durante o dia, atendemos até 200 pessoas no salão de festas.",
+      "Para dormir, temos espaço para 25 pessoas, distribuídas em 6 quartos (1 suíte). Para eventos durante o dia, o salão de festas atende até 200 pessoas.",
+  },
+  {
+    pergunta: "Quantos banheiros tem?",
+    resposta:
+      "São 3 banheiros completos na casa, mais 2 vestiários — cada um com 3 vasos e 1 chuveiro — e 2 lavabos com um vaso cada. Dá para receber grupo grande sem fila.",
   },
   {
     pergunta: "Preciso levar roupa de cama e toalha?",
     resposta:
       "Sim. Não fornecemos travesseiro, roupa de cama, edredom, cobertor nem toalha. O restante da estrutura — cozinha equipada, panelas, talheres e louça para 30 pessoas — está tudo incluso.",
+  },
+  {
+    pergunta: "Tem internet?",
+    resposta:
+      "Tem, e boa: Wi-Fi via Starlink. Mesmo na zona rural você consegue trabalhar, fazer chamada de vídeo ou só deixar as crianças assistindo.",
   },
   {
     pergunta: "Qual o horário de check-in e check-out?",
@@ -135,11 +177,6 @@ export const FAQ = [
       "Não, a piscina não é aquecida. Ela tem de 1,40m a 1,90m de profundidade, e a cascata funciona das 9h às 12h e das 14h às 17h.",
   },
   {
-    pergunta: "Posso colocar som? Até que horas?",
-    resposta:
-      "Pode sim, o som é liberado em qualquer horário. O sítio é afastado, então você aproveita sua festa sem preocupação com vizinhos.",
-  },
-  {
     pergunta: "Como funciona o pagamento?",
     resposta:
       "São 50% de sinal na assinatura do contrato e os outros 50% no check-in, junto com a caução de R$ 500 — que devolvemos integralmente se estiver tudo certo.",
@@ -148,11 +185,6 @@ export const FAQ = [
     pergunta: "Posso visitar o sítio antes de fechar?",
     resposta:
       "Pode! As visitas são agendadas antes da assinatura do contrato. Chame no WhatsApp que combinamos o melhor dia e horário.",
-  },
-  {
-    pergunta: "Aceitam animais de estimação?",
-    resposta:
-      "Fale com a gente no WhatsApp para confirmar as condições da sua data.",
   },
 ] as const;
 

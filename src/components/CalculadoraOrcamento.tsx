@@ -346,7 +346,7 @@ export function CalculadoraOrcamento() {
             <Campo
               label="Número de pessoas"
               htmlFor="pessoas"
-              dica={`Até ${CAPACIDADE.dormirMax} para dormir, até ${CAPACIDADE.eventoMax} em evento`}
+              dica={`${CAPACIDADE.dormirAtual} para dormir, até ${CAPACIDADE.eventoMax} em evento`}
             >
               <input
                 id="pessoas"

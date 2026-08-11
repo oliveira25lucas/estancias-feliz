@@ -25,7 +25,7 @@ export const metadata: Metadata = {
     template: "%s | Sítio Estâncias Feliz",
   },
   description:
-    "Sítio para alugar perto de Belo Horizonte: piscina com cascata, salão de festas, churrasqueira e 6 quartos para até 30 pessoas. Na MG-040, Km 30, em Sarzedo. Faça seu orçamento na hora.",
+    "Sítio para alugar perto de Belo Horizonte: piscina com cascata, salão de festas, churrasqueira e 6 quartos para 25 pessoas. Wi-Fi Starlink. Na MG-040, Km 30, em Sarzedo. Faça seu orçamento na hora.",
   keywords: [
     "sítio para alugar BH",
     "sítio para festa Belo Horizonte",
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     siteName: "Sítio Estâncias Feliz",
     title: "Sítio Estâncias Feliz — Seu evento com piscina, salão e churrasqueira",
     description:
-      "Até 30 pessoas para dormir e 200 para eventos. Piscina com cascata, salão de festas e som liberado. A 30 km de BH, na MG-040.",
+      "25 pessoas para dormir e 200 para eventos. Piscina com cascata, salão de festas coberto e Wi-Fi Starlink. A 30 km de BH, na MG-040.",
     images: [
       {
         url: "/og.jpg",
@@ -89,24 +89,31 @@ const jsonLd = {
   address: {
     "@type": "PostalAddress",
     streetAddress: LOCALIZACAO.endereco,
-    addressLocality: LOCALIZACAO.cidade,
+    addressLocality: `${LOCALIZACAO.bairro}, ${LOCALIZACAO.cidade}`,
     addressRegion: LOCALIZACAO.estado,
+    postalCode: LOCALIZACAO.cep,
     addressCountry: "BR",
   },
-  sameAs: [CONTATO.instagram, CONTATO.airbnb],
+  // As coordenadas ajudam o Google a posicionar o sítio na busca local,
+  // que é como quase todo cliente daqui encontra o lugar.
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: LOCALIZACAO.latitude,
+    longitude: LOCALIZACAO.longitude,
+  },
+  sameAs: [CONTATO.instagram, CONTATO.airbnb, CONTATO.google],
   amenityFeature: [
     "Piscina",
     "Salão de festas",
     "Churrasqueira",
-    "Wi-Fi",
-    "Quadra de vôlei",
+    "Wi-Fi Starlink",
+    "Quadra de vôlei e peteca",
     "Mesa de sinuca",
   ].map((nome) => ({
     "@type": "LocationFeatureSpecification",
     name: nome,
     value: true,
   })),
-  petsAllowed: false,
   numberOfRooms: 6,
   maximumAttendeeCapacity: 200,
 };

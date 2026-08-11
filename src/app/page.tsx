@@ -6,12 +6,12 @@ import {
   ChefHat,
   Home,
   MapPin,
-  Music,
   PartyPopper,
-  ShieldCheck,
   Sparkles,
+  Umbrella,
   Users,
   Waves,
+  Wifi,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -19,6 +19,7 @@ import { BotaoWhatsApp } from "@/components/BotaoWhatsApp";
 import { Galeria } from "@/components/Galeria";
 import {
   CAPACIDADE,
+  ENDERECO_COMPLETO,
   ESTRUTURA,
   FAQ,
   HORARIOS,
@@ -28,12 +29,7 @@ import {
   PAGAMENTO,
   linkWhatsApp,
 } from "@/lib/site-config";
-import {
-  HIDROMASSAGEM_DIARIA,
-  comReajuste,
-  formatarBRL,
-  tabelaDePrecos,
-} from "@/lib/pricing";
+import { formatarBRL, tabelaDePrecos } from "@/lib/pricing";
 
 /**
  * Os valores sobem 10% na virada do ano. Sem esta revalidação a página
@@ -43,22 +39,30 @@ export const revalidate = 3600;
 
 const ICONES = {
   home: Home,
+  bath: Bath,
   waves: Waves,
   party: PartyPopper,
   chef: ChefHat,
 } as const;
 
 const DESTAQUES = [
-  { icone: Users, valor: `${CAPACIDADE.dormirMax}`, rotulo: "pessoas para dormir" },
+  {
+    icone: Users,
+    valor: `${CAPACIDADE.dormirAtual}`,
+    rotulo: "pessoas para dormir",
+  },
   { icone: BedDouble, valor: `${CAPACIDADE.quartos}`, rotulo: "quartos, 1 suíte" },
-  { icone: Bath, valor: `${CAPACIDADE.banheiros}`, rotulo: "banheiros" },
-  { icone: PartyPopper, valor: `${CAPACIDADE.eventoMax}`, rotulo: "pessoas em evento" },
+  {
+    icone: PartyPopper,
+    valor: `${CAPACIDADE.eventoMax}`,
+    rotulo: "pessoas em evento",
+  },
+  { icone: MapPin, valor: "30", rotulo: "km de Belo Horizonte" },
 ];
 
 export default function PaginaInicial() {
   const ano = new Date().getFullYear();
   const tabela = tabelaDePrecos(ano);
-  const hidromassagem = comReajuste(HIDROMASSAGEM_DIARIA, ano);
 
   return (
     <>
@@ -90,9 +94,9 @@ export default function PaginaInicial() {
               Sítio Estâncias Feliz
             </h1>
             <p className="surgir mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-areia-100 sm:text-xl">
-              Piscina com cascata, salão de festas, churrasqueira e espaço de
-              sobra para a família toda. A 30 km de Belo Horizonte, com som
-              liberado a qualquer hora.
+              Piscina com cascata, salão de festas coberto, churrasqueira e
+              espaço de sobra para a família toda. A 30 km de Belo Horizonte,
+              com Wi-Fi Starlink.
             </p>
 
             <div className="surgir mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -176,24 +180,25 @@ export default function PaginaInicial() {
               })}
             </div>
 
+            {/* Diferenciais, não regras de contrato. Caução e adicional de
+                hidromassagem aparecem mais abaixo, junto do pagamento. */}
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
               <div className="flex items-center gap-3 rounded-2xl bg-mata-700 p-5 text-areia-50">
-                <Music className="size-6 shrink-0" aria-hidden />
+                <Wifi className="size-6 shrink-0" aria-hidden />
                 <p className="text-sm font-medium leading-snug">
-                  Som liberado em qualquer horário
+                  Wi-Fi Starlink: internet rápida mesmo no meio do verde
                 </p>
               </div>
               <div className="flex items-center gap-3 rounded-2xl bg-mata-700 p-5 text-areia-50">
                 <Waves className="size-6 shrink-0" aria-hidden />
                 <p className="text-sm font-medium leading-snug">
-                  Hidromassagem opcional por{" "}
-                  {formatarBRL(hidromassagem)} a diária
+                  Piscina com cascata, das 9h às 12h e das 14h às 17h
                 </p>
               </div>
               <div className="flex items-center gap-3 rounded-2xl bg-mata-700 p-5 text-areia-50">
-                <ShieldCheck className="size-6 shrink-0" aria-hidden />
+                <Umbrella className="size-6 shrink-0" aria-hidden />
                 <p className="text-sm font-medium leading-snug">
-                  Caução de {formatarBRL(PAGAMENTO.caucao)}, devolvida no fim
+                  Salão e churrasqueira cobertos — chuva não estraga o dia
                 </p>
               </div>
             </div>
@@ -344,7 +349,7 @@ export default function PaginaInicial() {
                   aria-hidden
                 />
                 <div>
-                  <p className="font-medium">{LOCALIZACAO.endereco}</p>
+                  <p className="font-medium">{ENDERECO_COMPLETO}</p>
                   <p className="text-sm text-areia-300">
                     {LOCALIZACAO.referencia}
                   </p>
@@ -385,7 +390,7 @@ export default function PaginaInicial() {
             <div className="overflow-hidden rounded-3xl shadow-2xl">
               <iframe
                 title="Mapa com a localização do Sítio Estâncias Feliz"
-                src="https://www.google.com/maps?q=Rodovia%20BH-Brumadinho%20MG-040%20Km%2030%20Sarzedo%20MG&output=embed"
+                src={`https://www.google.com/maps?q=${LOCALIZACAO.latitude},${LOCALIZACAO.longitude}&z=15&output=embed`}
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
                 className="h-[26rem] w-full border-0"
