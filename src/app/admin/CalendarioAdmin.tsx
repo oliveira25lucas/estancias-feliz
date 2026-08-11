@@ -1,8 +1,18 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { ChevronLeft, ChevronRight, Loader2, Lock, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Lock,
+  MessageCircle,
+  Trash2,
+  X,
+} from "lucide-react";
 import type { Orcamento, Reserva } from "@/lib/supabase";
+import { formatarBRL, formatarDataBR, nomeDiaSemana } from "@/lib/pricing";
+import { diasOcupados } from "@/lib/ocupacao";
 import { bloquearPeriodo, liberarPeriodo } from "./actions";
 import { CampoData } from "@/components/CampoData";
 
@@ -27,24 +37,10 @@ function paraISO(d: Date): string {
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
 
-/** Dias de um período, incluindo o primeiro e excluindo o último (padrão de hospedagem). */
-function diasDoPeriodo(inicio: string, fim: string, incluirFim = false): string[] {
-  const dias: string[] = [];
-  const [ai, mi, di] = inicio.slice(0, 10).split("-").map(Number);
-  const [af, mf, df] = fim.slice(0, 10).split("-").map(Number);
-  const atual = new Date(ai, mi - 1, di);
-  const limite = new Date(af, mf - 1, df);
-  while (incluirFim ? atual <= limite : atual < limite) {
-    dias.push(paraISO(atual));
-    atual.setDate(atual.getDate() + 1);
-  }
-  return dias;
-}
-
-type Marca = {
-  tipo: "reserva" | "bloqueio" | "orcamento";
-  descricao: string;
-};
+type Marca =
+  | { tipo: "reserva"; dado: Reserva }
+  | { tipo: "bloqueio"; dado: Bloqueio }
+  | { tipo: "orcamento"; dado: Orcamento };
 
 export function CalendarioAdmin({
   reservas,
@@ -62,6 +58,7 @@ export function CalendarioAdmin({
   const [erro, setErro] = useState("");
   const [bloqueioInicio, setBloqueioInicio] = useState("");
   const [bloqueioFim, setBloqueioFim] = useState("");
+  const [diaAberto, setDiaAberto] = useState<string | null>(null);
 
   /** Um mapa dia -> marcas evita varrer todas as listas para cada célula. */
   const marcasPorDia = useMemo(() => {
@@ -76,34 +73,23 @@ export function CalendarioAdmin({
     for (const r of reservas) {
       if (!r.data_checkin) continue;
       if (r.status === "CANCELADA") continue; // reserva cancelada libera a data
-      const fim = r.data_checkout ?? r.data_checkin;
-      for (const dia of diasDoPeriodo(r.data_checkin, fim, !r.data_checkout)) {
-        marcar(dia, {
-          tipo: "reserva",
-          descricao: `Reserva: ${r.nome_cliente ?? r.telefone ?? "sem nome"}${
-            r.qtd_pessoas ? ` (${r.qtd_pessoas} pessoas)` : ""
-          }`,
-        });
+      for (const dia of diasOcupados(r.data_checkin, r.data_checkout ?? r.data_checkin)) {
+        marcar(dia, { tipo: "reserva", dado: r });
       }
     }
 
     for (const b of bloqueios) {
-      for (const dia of diasDoPeriodo(b.data_inicio, b.data_fim, true)) {
-        marcar(dia, {
-          tipo: "bloqueio",
-          descricao: `Bloqueado${b.motivo ? `: ${b.motivo}` : ""}`,
-        });
+      for (const dia of diasOcupados(b.data_inicio, b.data_fim)) {
+        marcar(dia, { tipo: "bloqueio", dado: b });
       }
     }
 
     // Só pedidos ainda em aberto — fechados já viram reserva, perdidos não ocupam.
     for (const o of orcamentos) {
       if (o.status !== "novo" && o.status !== "em_contato") continue;
-      for (const dia of diasDoPeriodo(o.checkin, o.checkout)) {
-        marcar(dia, {
-          tipo: "orcamento",
-          descricao: `Pedido de ${o.nome} (${o.pessoas} pessoas)`,
-        });
+      if (!o.checkin || !o.checkout) continue;
+      for (const dia of diasOcupados(o.checkin, o.checkout)) {
+        marcar(dia, { tipo: "orcamento", dado: o });
       }
     }
 
@@ -121,6 +107,7 @@ export function CalendarioAdmin({
     const d = new Date(ano, mes + delta, 1);
     setMes(d.getMonth());
     setAno(d.getFullYear());
+    setDiaAberto(null);
   }
 
   function aoBloquear(formData: FormData) {
@@ -141,11 +128,14 @@ export function CalendarioAdmin({
     iniciar(async () => {
       try {
         await liberarPeriodo(id);
+        setDiaAberto(null);
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Falha ao liberar.");
       }
     });
   }
+
+  const marcasDoDiaAberto = diaAberto ? (marcasPorDia.get(diaAberto) ?? []) : [];
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
@@ -188,23 +178,30 @@ export function CalendarioAdmin({
             const iso = paraISO(new Date(ano, mes, dia));
             const marcas = marcasPorDia.get(iso) ?? [];
             const ehHoje = iso === paraISO(hoje);
+            const aberto = iso === diaAberto;
 
             const temReserva = marcas.some((m) => m.tipo === "reserva");
             const temBloqueio = marcas.some((m) => m.tipo === "bloqueio");
             const temOrcamento = marcas.some((m) => m.tipo === "orcamento");
 
             let cor = "bg-white text-mata-800 hover:bg-mata-50";
-            if (temReserva) cor = "bg-mata-600 text-white";
-            else if (temBloqueio) cor = "bg-mata-300 text-mata-900";
-            else if (temOrcamento) cor = "bg-terra-500/20 text-terra-700";
+            if (temReserva) cor = "bg-mata-600 text-white hover:bg-mata-700";
+            else if (temBloqueio) cor = "bg-mata-300 text-mata-900 hover:bg-mata-400";
+            else if (temOrcamento)
+              cor = "bg-terra-500/20 text-terra-700 hover:bg-terra-500/30";
 
             return (
-              <div
+              <button
                 key={iso}
-                title={marcas.map((m) => m.descricao).join("\n") || undefined}
+                type="button"
+                onClick={() => setDiaAberto(aberto ? null : iso)}
+                aria-pressed={aberto}
+                aria-label={`${dia} de ${MESES[mes]}${
+                  marcas.length ? ` — ${marcas.length} registro(s)` : " — livre"
+                }`}
                 className={`relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm transition ${cor} ${
                   ehHoje ? "ring-2 ring-terra-500 ring-offset-1" : ""
-                }`}
+                } ${aberto ? "ring-2 ring-mata-900 ring-offset-1" : ""}`}
               >
                 <span className="font-medium">{dia}</span>
                 {marcas.length > 1 && (
@@ -212,7 +209,7 @@ export function CalendarioAdmin({
                     {marcas.length}
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -221,7 +218,21 @@ export function CalendarioAdmin({
           <Legenda cor="bg-mata-600" rotulo="Reserva confirmada" />
           <Legenda cor="bg-terra-500/40" rotulo="Orçamento em aberto" />
           <Legenda cor="bg-mata-300" rotulo="Bloqueado por você" />
+          <span className="text-mata-500">
+            Clique num dia para ver os detalhes. A data de saída também conta
+            como ocupada.
+          </span>
         </div>
+
+        {diaAberto && (
+          <DetalhesDoDia
+            dia={diaAberto}
+            marcas={marcasDoDiaAberto}
+            aoFechar={() => setDiaAberto(null)}
+            aoLiberar={aoLiberar}
+            pendente={pendente}
+          />
+        )}
       </div>
 
       <div className="space-y-5">
@@ -318,6 +329,217 @@ export function CalendarioAdmin({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  Detalhes de um dia
+// ============================================================
+
+function DetalhesDoDia({
+  dia,
+  marcas,
+  aoFechar,
+  aoLiberar,
+  pendente,
+}: {
+  dia: string;
+  marcas: Marca[];
+  aoFechar: () => void;
+  aoLiberar: (id: string) => void;
+  pendente: boolean;
+}) {
+  return (
+    <div className="mt-5 rounded-2xl border border-mata-200 bg-areia-50 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h4 className="font-display text-base font-semibold text-mata-900">
+            {nomeDiaSemana(dia)}, {formatarDataBR(dia)}
+          </h4>
+          <p className="text-xs text-mata-600">
+            {marcas.length === 0
+              ? "Nenhum compromisso — dia livre."
+              : `${marcas.length} registro${marcas.length > 1 ? "s" : ""} neste dia`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={aoFechar}
+          className="rounded-lg p-1.5 text-mata-400 transition hover:bg-mata-100 hover:text-mata-700"
+          aria-label="Fechar detalhes do dia"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
+      {marcas.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {marcas.map((m, i) => (
+            <Cartao
+              key={`${m.tipo}-${i}`}
+              marca={m}
+              dia={dia}
+              aoLiberar={aoLiberar}
+              pendente={pendente}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Cartao({
+  marca,
+  dia,
+  aoLiberar,
+  pendente,
+}: {
+  marca: Marca;
+  dia: string;
+  aoLiberar: (id: string) => void;
+  pendente: boolean;
+}) {
+  if (marca.tipo === "bloqueio") {
+    const b = marca.dado;
+    return (
+      <article className="rounded-xl border border-mata-200 bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Etiqueta cor="bg-mata-200 text-mata-800">Bloqueado</Etiqueta>
+            <p className="mt-2 font-medium text-mata-900">
+              {formatarDataBR(b.data_inicio)} a {formatarDataBR(b.data_fim)}
+            </p>
+            <p className="text-sm text-mata-600">
+              {b.motivo || "Sem motivo informado"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => aoLiberar(b.id)}
+            disabled={pendente}
+            className="shrink-0 rounded-lg p-1.5 text-mata-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+            aria-label="Liberar este bloqueio"
+          >
+            <Trash2 className="size-4" />
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  if (marca.tipo === "reserva") {
+    const r = marca.dado;
+    const ehEntrada = r.data_checkin === dia;
+    const ehSaida = r.data_checkout === dia;
+
+    return (
+      <article className="rounded-xl border border-mata-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Etiqueta cor="bg-mata-600 text-white">Reserva</Etiqueta>
+          {ehEntrada && (
+            <Etiqueta cor="bg-mata-100 text-mata-700">Entrada hoje</Etiqueta>
+          )}
+          {ehSaida && (
+            <Etiqueta cor="bg-terra-500/15 text-terra-700">Saída hoje</Etiqueta>
+          )}
+        </div>
+
+        <p className="mt-2 font-display text-lg font-semibold text-mata-900">
+          {r.nome_cliente ?? "Sem nome"}
+        </p>
+
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <Item rotulo="Entrada" valor={formatarDataBR(r.data_checkin ?? "")} />
+          <Item rotulo="Saída" valor={formatarDataBR(r.data_checkout ?? "")} />
+          {r.qtd_pessoas ? (
+            <Item rotulo="Pessoas" valor={String(r.qtd_pessoas)} />
+          ) : null}
+          {r.valor_final ? (
+            <Item rotulo="Valor" valor={formatarBRL(Number(r.valor_final))} />
+          ) : null}
+          {r.tipo_evento ? <Item rotulo="Ocasião" valor={r.tipo_evento} /> : null}
+          <Item rotulo="Situação" valor={rotuloStatus(r.status)} />
+        </dl>
+
+        {r.tipo_reserva && (
+          <p className="mt-2 text-xs text-mata-500">{r.tipo_reserva}</p>
+        )}
+
+        {r.telefone && (
+          <a
+            href={`https://wa.me/55${r.telefone.replace(/\D/g, "").replace(/^55/, "")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-flex items-center gap-2 rounded-full bg-zap px-4 py-2 text-xs font-semibold text-white transition hover:bg-zap-escuro"
+          >
+            <MessageCircle className="size-4" aria-hidden />
+            Falar com {(r.nome_cliente ?? "cliente").split(" ")[0]}
+          </a>
+        )}
+      </article>
+    );
+  }
+
+  const o = marca.dado;
+  return (
+    <article className="rounded-xl border border-terra-500/30 bg-white p-4">
+      <Etiqueta cor="bg-terra-500/15 text-terra-700">Orçamento em aberto</Etiqueta>
+      <p className="mt-2 font-display text-lg font-semibold text-mata-900">
+        {o.nome}
+      </p>
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        <Item rotulo="Entrada" valor={formatarDataBR(o.checkin ?? "")} />
+        <Item rotulo="Saída" valor={formatarDataBR(o.checkout ?? "")} />
+        <Item rotulo="Pessoas" valor={String(o.pessoas)} />
+        {o.valor_calculado ? (
+          <Item rotulo="Valor" valor={formatarBRL(Number(o.valor_calculado))} />
+        ) : null}
+        {o.ocasiao ? <Item rotulo="Ocasião" valor={o.ocasiao} /> : null}
+      </dl>
+      {o.telefone && (
+        <a
+          href={`https://wa.me/55${o.telefone.replace(/\D/g, "").replace(/^55/, "")}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-2 rounded-full bg-zap px-4 py-2 text-xs font-semibold text-white transition hover:bg-zap-escuro"
+        >
+          <MessageCircle className="size-4" aria-hidden />
+          Responder {o.nome.split(" ")[0]}
+        </a>
+      )}
+    </article>
+  );
+}
+
+function rotuloStatus(status: string | null): string {
+  if (status === "CONFIRMADA") return "Confirmada";
+  if (status === "CANCELADA") return "Cancelada";
+  return "Aguardando contrato";
+}
+
+function Etiqueta({
+  cor,
+  children,
+}: {
+  cor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${cor}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Item({ rotulo, valor }: { rotulo: string; valor: string }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase tracking-wide text-mata-500">{rotulo}</dt>
+      <dd className="font-medium text-mata-900">{valor}</dd>
     </div>
   );
 }

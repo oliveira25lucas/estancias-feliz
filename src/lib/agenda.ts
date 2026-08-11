@@ -7,13 +7,17 @@
  * WhatsApp consultam daqui.
  *
  * Regra de sobreposição: duas estadias colidem quando
- * `inicioA < fimB && inicioB < fimA`. O dia da saída não conta como
- * ocupado — quem sai às 16h libera a data para quem entra no dia
- * seguinte, e o check-out do sábado não impede a entrada no sábado.
+ * `inicioA < fimB && inicioB < fimA`.
+ *
+ * O DIA DA SAÍDA CONTA COMO OCUPADO. O hóspede sai às 16h e ainda há
+ * limpeza e arrumação; na prática o sítio só volta a ficar livre no dia
+ * seguinte. Por isso o período ocupado vai do check-in ao check-out
+ * INCLUSIVE, e a próxima entrada possível é no dia seguinte à saída.
  */
 
 import { getSupabase, type Reserva } from "./supabase";
 import { formatarDataBR } from "./pricing";
+import { periodosColidem, somaDiasISO } from "./ocupacao";
 
 export type Conflito = {
   tipo: "reserva" | "bloqueio";
@@ -32,15 +36,6 @@ export type Disponibilidade = {
   resumo: string;
 };
 
-function seSobrepoe(
-  inicioA: string,
-  fimA: string,
-  inicioB: string,
-  fimB: string,
-): boolean {
-  return inicioA < fimB && inicioB < fimA;
-}
-
 /**
  * Verifica se o período está livre.
  * Reservas canceladas não ocupam data.
@@ -58,8 +53,10 @@ export async function verificarDisponibilidade(
       .from("reservas")
       .select("id, data_checkin, data_checkout, status, qtd_pessoas")
       .neq("status", "CANCELADA")
-      .lt("data_checkin", checkout)
-      .gt("data_checkout", checkin),
+      // Alarga um dia: a saída ocupa, então uma reserva que termina no
+      // próprio check-in pedido ainda conflita.
+      .lte("data_checkin", checkout)
+      .gte("data_checkout", somaDiasISO(checkin, -1)),
     supabase
       .from("datas_bloqueadas")
       .select("id, data_inicio, data_fim, motivo")
@@ -78,7 +75,7 @@ export async function verificarDisponibilidade(
 
   for (const r of (resReservas.data ?? []) as Partial<Reserva>[]) {
     if (!r.data_checkin || !r.data_checkout) continue;
-    if (seSobrepoe(checkin, checkout, r.data_checkin, r.data_checkout)) {
+    if (periodosColidem(checkin, checkout, r.data_checkin, r.data_checkout)) {
       conflitos.push({
         tipo: "reserva",
         inicio: r.data_checkin,
@@ -89,10 +86,8 @@ export async function verificarDisponibilidade(
   }
 
   for (const b of resBloqueios.data ?? []) {
-    // O bloqueio é inclusivo nas duas pontas: o dia final também está
-    // indisponível, diferente do check-out de uma reserva.
-    const fimExclusivo = somaUmDia(b.data_fim);
-    if (seSobrepoe(checkin, checkout, b.data_inicio, fimExclusivo)) {
+    // O bloqueio é inclusivo nas duas pontas, igual à reserva.
+    if (periodosColidem(checkin, checkout, b.data_inicio, b.data_fim)) {
       conflitos.push({
         tipo: "bloqueio",
         inicio: b.data_inicio,
@@ -115,14 +110,6 @@ export async function verificarDisponibilidade(
       ? `LIVRE: de ${formatarDataBR(checkin)} a ${formatarDataBR(checkout)} está disponível.`
       : `OCUPADO: de ${formatarDataBR(checkin)} a ${formatarDataBR(checkout)} não está disponível.`,
   };
-}
-
-function somaUmDia(iso: string): string {
-  const [ano, mes, dia] = iso.slice(0, 10).split("-").map(Number);
-  const d = new Date(ano, mes - 1, dia + 1);
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${dd}`;
 }
 
 /**
