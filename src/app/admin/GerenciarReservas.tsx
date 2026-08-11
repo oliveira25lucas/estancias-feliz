@@ -2,17 +2,24 @@
 
 import { useState, useTransition } from "react";
 import { CalendarPlus, Loader2, Trash2, X } from "lucide-react";
-import type { Reserva } from "@/lib/supabase";
+import type { Reserva, StatusReserva } from "@/lib/supabase";
 import { formatarBRL, formatarDataBR } from "@/lib/pricing";
 import { criarReserva, excluirReserva, mudarStatusReserva } from "./actions";
 
+/**
+ * O vocabulário vem do banco, que já usava PENDENTE_CONTRATO nas 23
+ * reservas criadas pela Júlia. Renomear quebraria o histórico.
+ * PENDENTE_CONTRATO e CONFIRMADA ocupam a data; CANCELADA libera.
+ */
 const STATUS = [
-  { valor: "confirmada", rotulo: "Confirmada", cor: "bg-mata-100 text-mata-800" },
-  { valor: "pre_reserva", rotulo: "Pré-reserva", cor: "bg-amber-100 text-amber-800" },
-  { valor: "cancelada", rotulo: "Cancelada", cor: "bg-mata-50 text-mata-400" },
-] as const;
-
-type StatusValor = (typeof STATUS)[number]["valor"];
+  {
+    valor: "PENDENTE_CONTRATO",
+    rotulo: "Aguardando contrato",
+    cor: "bg-amber-100 text-amber-800",
+  },
+  { valor: "CONFIRMADA", rotulo: "Confirmada", cor: "bg-mata-100 text-mata-800" },
+  { valor: "CANCELADA", rotulo: "Cancelada", cor: "bg-mata-50 text-mata-400" },
+] as const satisfies readonly { valor: StatusReserva; rotulo: string; cor: string }[];
 
 export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
   const [abrindo, setAbrindo] = useState(false);
@@ -92,10 +99,10 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
             <select
               id="status"
               name="status"
-              defaultValue="confirmada"
+              defaultValue="PENDENTE_CONTRATO"
               className="w-full rounded-lg border border-mata-200 px-3 py-2 text-sm outline-none focus:border-terra-500"
             >
-              {STATUS.filter((s) => s.valor !== "cancelada").map((s) => (
+              {STATUS.filter((s) => s.valor !== "CANCELADA").map((s) => (
                 <option key={s.valor} value={s.valor}>
                   {s.rotulo}
                 </option>
@@ -135,7 +142,7 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
               <div
                 key={String(r.id)}
                 className={`flex flex-wrap items-center gap-3 rounded-xl border border-mata-100 p-3 text-sm ${
-                  r.status === "cancelada" ? "opacity-60" : ""
+                  r.status === "CANCELADA" ? "opacity-60" : ""
                 }`}
               >
                 <div className="min-w-0 flex-1">
@@ -159,11 +166,11 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
                 </div>
 
                 <select
-                  value={r.status ?? "confirmada"}
+                  value={r.status ?? "PENDENTE_CONTRATO"}
                   disabled={pendente}
                   onChange={(e) =>
                     executar(() =>
-                      mudarStatusReserva(r.id, e.target.value as StatusValor),
+                      mudarStatusReserva(r.id, e.target.value as StatusReserva),
                     )
                   }
                   aria-label={`Situação da reserva de ${r.nome_cliente ?? "cliente"}`}

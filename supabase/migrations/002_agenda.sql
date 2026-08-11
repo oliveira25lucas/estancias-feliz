@@ -5,20 +5,21 @@
 --  toda hora e derrubava o atendimento. A partir daqui a agenda mora
 --  aqui no banco, e tanto o site quanto a Júlia consultam o mesmo lugar.
 --
+--  Escrito contra o schema REAL do projeto jmundnnugyqqwahugjxt:
+--  `reservas` já existe, com id uuid, valor_final text, criado_em, e
+--  status default 'PENDENTE_CONTRATO' em todas as 23 linhas atuais.
+--  Por isso o vocabulário de status é estendido, não substituído.
+--
 --  Rode no SQL Editor do Supabase, depois do 001. É seguro repetir.
 -- ============================================================
 
 -- ---------- Status das reservas ----------
--- O workflow do n8n cria reservas sem status. Sem essa coluna não há
--- como cancelar uma reserva: a data ficaria bloqueada para sempre.
+-- A coluna já existe. O que falta é poder CANCELAR: sem um status de
+-- cancelamento, uma reserva desfeita seguraria a data para sempre.
 alter table if exists public.reservas
-  add column if not exists status text default 'confirmada';
+  alter column status set default 'PENDENTE_CONTRATO';
 
-alter table if exists public.reservas
-  add column if not exists origem text default 'whatsapp';
-
--- Reservas antigas, criadas antes desta migração, entram como confirmadas.
-update public.reservas set status = 'confirmada' where status is null;
+update public.reservas set status = 'PENDENTE_CONTRATO' where status is null;
 
 do $$
 begin
@@ -27,9 +28,16 @@ begin
   ) then
     alter table public.reservas
       add constraint reservas_status_valido
-      check (status in ('confirmada', 'pre_reserva', 'cancelada'));
+      check (status in ('PENDENTE_CONTRATO', 'CONFIRMADA', 'CANCELADA'));
   end if;
 end $$;
+
+comment on column public.reservas.status is
+  'PENDENTE_CONTRATO e CONFIRMADA ocupam a data. CANCELADA libera.';
+
+-- De onde veio a reserva: whatsapp (Júlia) ou admin (painel do site).
+alter table if exists public.reservas
+  add column if not exists origem text default 'whatsapp';
 
 -- ---------- Índices de agenda ----------
 -- Toda consulta de disponibilidade filtra por período e por status.
@@ -39,9 +47,9 @@ create index if not exists reservas_status_idx
   on public.reservas (status);
 
 -- ---------- Ligação entre orçamento e reserva ----------
--- Quando um orçamento do site vira reserva, guardamos de onde veio.
+-- reservas.id é uuid, não bigint.
 alter table if exists public.orcamentos
-  add column if not exists reserva_id bigint;
+  add column if not exists reserva_id uuid;
 
 comment on column public.orcamentos.reserva_id is
   'Reserva gerada a partir deste orçamento, quando o negócio fecha.';
@@ -73,3 +81,29 @@ alter table if exists public.orcamentos
 -- Só a service role key (usada apenas no servidor do site e pelo n8n)
 -- enxerga estas tabelas.
 alter table if exists public.reservas enable row level security;
+
+-- ============================================================
+--  Limpeza opcional: reservas duplicadas
+--
+--  O workflow v3 grava a reserva sem checar se já existe uma igual.
+--  Hoje há 4 linhas idênticas da mesma cliente (Sula, 01 a 04/07/2027).
+--  Rode o SELECT primeiro para conferir, e só então o DELETE.
+-- ============================================================
+
+-- Conferir o que seria apagado:
+--
+--   select telefone, nome_cliente, data_checkin, data_checkout, count(*)
+--   from public.reservas
+--   group by 1,2,3,4
+--   having count(*) > 1;
+--
+-- Apagar, mantendo a mais antiga de cada grupo:
+--
+--   delete from public.reservas r using (
+--     select id, row_number() over (
+--       partition by telefone, data_checkin, data_checkout
+--       order by criado_em
+--     ) as n
+--     from public.reservas
+--   ) dup
+--   where r.id = dup.id and dup.n > 1;

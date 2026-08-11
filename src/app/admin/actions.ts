@@ -8,7 +8,7 @@ import {
   estaAutenticado,
   senhaCorreta,
 } from "@/lib/auth";
-import { getSupabase } from "@/lib/supabase";
+import { getSupabase, type StatusReserva } from "@/lib/supabase";
 
 /** Toda ação abaixo passa por aqui antes de tocar no banco. */
 async function exigirLogin() {
@@ -116,7 +116,7 @@ export async function criarReserva(formData: FormData): Promise<void> {
   const qtd_pessoas = Number(formData.get("qtd_pessoas")) || null;
   const valor_final = Number(formData.get("valor_final")) || null;
   const tipo_evento = String(formData.get("tipo_evento") ?? "").trim();
-  const status = String(formData.get("status") ?? "confirmada");
+  const status = String(formData.get("status") ?? "PENDENTE_CONTRATO");
 
   if (!nome_cliente) throw new Error("Informe o nome do cliente.");
   if (!data_checkin || !data_checkout) throw new Error("Informe as duas datas.");
@@ -129,7 +129,7 @@ export async function criarReserva(formData: FormData): Promise<void> {
   const { data: choques } = await getSupabase()
     .from("reservas")
     .select("id, nome_cliente, data_checkin, data_checkout")
-    .neq("status", "cancelada")
+    .neq("status", "CANCELADA")
     .lt("data_checkin", data_checkout)
     .gt("data_checkout", data_checkin);
 
@@ -159,8 +159,8 @@ export async function criarReserva(formData: FormData): Promise<void> {
 }
 
 export async function mudarStatusReserva(
-  id: string | number,
-  status: "confirmada" | "pre_reserva" | "cancelada",
+  id: string,
+  status: StatusReserva,
 ): Promise<void> {
   await exigirLogin();
 
@@ -173,7 +173,7 @@ export async function mudarStatusReserva(
   revalidatePath("/admin");
 }
 
-export async function excluirReserva(id: string | number): Promise<void> {
+export async function excluirReserva(id: string): Promise<void> {
   await exigirLogin();
 
   const { error } = await getSupabase().from("reservas").delete().eq("id", id);

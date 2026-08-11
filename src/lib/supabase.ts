@@ -62,19 +62,23 @@ export type Orcamento = {
  * Os nomes das colunas vêm do nó "Criar Reserva1" do workflow — não
  * renomear sem mexer lá também.
  */
+/** PENDENTE_CONTRATO e CONFIRMADA ocupam a data; CANCELADA libera. */
+export type StatusReserva = "PENDENTE_CONTRATO" | "CONFIRMADA" | "CANCELADA";
+
 export type Reserva = {
-  id: string | number;
-  created_at: string | null;
+  /** uuid, não bigint. */
+  id: string;
+  criado_em: string | null;
   telefone: string | null;
   nome_cliente: string | null;
   tipo_evento: string | null;
   qtd_pessoas: number | null;
   data_checkin: string | null;
   data_checkout: string | null;
-  valor_final: number | null;
+  /** Gravado como texto pelo workflow do n8n. Converter antes de somar. */
+  valor_final: string | number | null;
   tipo_reserva: string | null;
-  /** Coluna acrescentada pelo site: reserva cancelada não ocupa a data. */
-  status: "confirmada" | "pre_reserva" | "cancelada" | null;
+  status: StatusReserva | null;
   origem: string | null;
 };
 

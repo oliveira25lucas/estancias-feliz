@@ -57,7 +57,7 @@ export async function verificarDisponibilidade(
     supabase
       .from("reservas")
       .select("id, data_checkin, data_checkout, status, qtd_pessoas")
-      .neq("status", "cancelada")
+      .neq("status", "CANCELADA")
       .lt("data_checkin", checkout)
       .gt("data_checkout", checkin),
     supabase
