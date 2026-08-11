@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/*
+  Paleta do Sítio Estâncias Feliz.
+  Verde de mata para a identidade, areia para respiro, terracota para as ações.
+  O site público é sempre claro — a sensação de dia de sol no sítio é o produto.
+*/
+@theme {
+  --color-mata-50: #f2f7f3;
+  --color-mata-100: #dfebe2;
+  --color-mata-200: #c0d8c7;
+  --color-mata-300: #93bda0;
+  --color-mata-400: #639a75;
+  --color-mata-500: #427c57;
+  --color-mata-600: #2f6343;
+  --color-mata-700: #274f37;
+  --color-mata-800: #21402e;
+  --color-mata-900: #1c3527;
+  --color-mata-950: #0e1d15;
+
+  --color-areia-50: #fbf9f4;
+  --color-areia-100: #f5f1e6;
+  --color-areia-200: #eae2cd;
+  --color-areia-300: #dbcdab;
+  --color-areia-400: #c9b284;
+  --color-areia-500: #bb9c67;
+
+  --color-terra-400: #d9895a;
+  --color-terra-500: #c2703d;
+  --color-terra-600: #a75a2d;
+  --color-terra-700: #8a4926;
+
+  --color-zap: #25d366;
+  --color-zap-escuro: #128c7e;
+
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Compensa o header fixo quando se navega por âncora. */
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--color-areia-50);
+  color: var(--color-mata-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Realce de foco consistente — acessibilidade por teclado em todo o site. */
+:focus-visible {
+  outline: 2px solid var(--color-terra-500);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@utility container-sitio {
+  width: 100%;
+  margin-inline: auto;
+  max-width: 80rem;
+  padding-inline: 1.25rem;
+
+  @media (width >= 48rem) {
+    padding-inline: 2rem;
+  }
+}
+
+/* Entrada suave das seções conforme a pessoa rola a página. */
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.surgir {
+  animation: surgir 0.7s ease-out both;
+}
