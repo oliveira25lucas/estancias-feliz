@@ -128,25 +128,14 @@
       "parameters": {
         "method": "POST",
         "url": "https://estanciasfeliz.com.br/api/consultar",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-token",
-              "value": "={{ $env.SITIO_API_TOKEN }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.corpoConsulta) }}",
         "options": {
           "timeout": 15000
-        }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "a1000000-0000-4000-8000-000000000007",
       "name": "Consultar Site",
@@ -156,7 +145,13 @@
         640,
         0
       ],
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0gyaq2PojEPwlyjk",
+          "name": "Site Estancias Feliz (x-api-token)"
+        }
+      }
     },
     {
       "parameters": {
@@ -277,7 +272,7 @@
     },
     {
       "parameters": {
-        "content": "## Atendimento Sítio v4\n\n**O site é o cérebro.** O nó `Consultar Site` chama\n`/api/consultar` e recebe preço e disponibilidade prontos.\nA IA só redige em cima desses fatos.\n\n### O que mudou em relação à v3\n- Saiu o Google Calendar (vivia desconectando). A agenda agora\n  mora no Supabase e é editável pelo painel do site.\n- Saiu todo cálculo de preço em código. Regra de preço existe\n  num lugar só: `src/lib/pricing.ts` no site.\n- 11 nós no lugar de 35.\n\n### Antes de ativar\n1. O site precisa estar publicado em estanciasfeliz.com.br.\n2. Definir a variável de ambiente `SITIO_API_TOKEN` no n8n,\n   com o mesmo valor de `API_TOKEN` na Vercel.\n3. Apontar o webhook da Evolution para `/webhook/sitio-v4`.\n4. Desativar o workflow v3 para os dois não responderem juntos.",
+        "content": "## Atendimento Sítio v4\n\n**O site é o cérebro.** O nó `Consultar Site` chama\n`/api/consultar` e recebe preço e disponibilidade prontos.\nA IA só redige em cima desses fatos.\n\n### O que mudou em relação à v3\n- Saiu o Google Calendar (vivia desconectando). A agenda agora\n  mora no Supabase e é editável pelo painel do site.\n- Saiu todo cálculo de preço em código. Regra de preço existe\n  num lugar só: `src/lib/pricing.ts` no site.\n- 11 nós no lugar de 35.\n\n### Antes de ativar\n1. O site precisa estar publicado em estanciasfeliz.com.br.\n2. O token do site já está na credencial\n   \"Site Estancias Feliz (x-api-token)\".\n3. Apontar o webhook da Evolution para `/webhook/sitio-v4`.\n4. Desativar o workflow v3 para os dois não responderem juntos.",
         "height": 420,
         "width": 460,
         "color": 4
