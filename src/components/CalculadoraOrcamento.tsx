@@ -1,19 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  CalendarCheck,
   CalendarDays,
+  CalendarSearch,
   CheckCircle2,
   Lightbulb,
   Loader2,
   Users,
+  XCircle,
 } from "lucide-react";
 import {
   CAUCAO,
   HIDROMASSAGEM_DIARIA,
   calcularOrcamento,
+  comReajuste,
   formatarBRL,
+  formatarDataBR,
+  tabelaDePrecos,
 } from "@/lib/pricing";
 import { CAPACIDADE, linkWhatsApp } from "@/lib/site-config";
 
@@ -42,13 +48,23 @@ function hojeISO(): string {
   return `${d.getFullYear()}-${mes}-${dia}`;
 }
 
+type Modo = "indefinido" | "com-data" | "sem-data";
 type Estado = "parado" | "enviando" | "enviado" | "erro";
+type Agenda =
+  | { situacao: "ocioso" }
+  | { situacao: "checando" }
+  | { situacao: "livre" }
+  | { situacao: "ocupado" }
+  | { situacao: "desconhecido" };
 
 export function CalculadoraOrcamento() {
+  const [modo, setModo] = useState<Modo>("indefinido");
+
   const [checkin, setCheckin] = useState("");
   const [checkout, setCheckout] = useState("");
   const [pessoas, setPessoas] = useState("");
   const [hidromassagem, setHidromassagem] = useState(false);
+  const [periodoDesejado, setPeriodoDesejado] = useState("");
 
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -58,6 +74,11 @@ export function CalculadoraOrcamento() {
 
   const [estado, setEstado] = useState<Estado>("parado");
   const [mensagemErro, setMensagemErro] = useState("");
+  /** Última resposta da agenda, marcada com o período que originou a consulta. */
+  const [consulta, setConsulta] = useState<{
+    chave: string;
+    livre: boolean | null;
+  } | null>(null);
 
   const orcamento = useMemo(
     () =>
@@ -70,28 +91,91 @@ export function CalculadoraOrcamento() {
     [checkin, checkout, pessoas, hidromassagem],
   );
 
-  const podeEnviar =
-    orcamento.valido &&
-    nome.trim().length >= 3 &&
-    telefone.replace(/\D/g, "").length >= 10 &&
-    estado !== "enviando";
+  // Identifica o período consultado. Enquanto a resposta guardada não for
+  // deste período, ainda estamos esperando.
+  const chavePeriodo = orcamento.valido
+    ? `${orcamento.checkin}|${orcamento.checkout}`
+    : "";
 
-  /** Texto que a pessoa leva pronto para o WhatsApp — a Júlia continua dali. */
+  // O estado exibido é derivado, não guardado: evita renderização em
+  // cascata e nunca fica preso num "checando" antigo.
+  const agenda: Agenda =
+    modo !== "com-data" || !orcamento.valido
+      ? { situacao: "ocioso" }
+      : consulta?.chave !== chavePeriodo
+        ? { situacao: "checando" }
+        : consulta.livre === null
+          ? { situacao: "desconhecido" }
+          : { situacao: consulta.livre ? "livre" : "ocupado" };
+
+  // ---- Consulta a agenda quando as datas mudam ----
+  useEffect(() => {
+    if (modo !== "com-data" || !chavePeriodo) return;
+
+    let cancelado = false;
+    const [inicio, fim] = chavePeriodo.split("|");
+
+    // Espera a pessoa parar de mexer antes de consultar.
+    const timer = setTimeout(async () => {
+      try {
+        const r = await fetch(
+          `/api/disponibilidade?checkin=${inicio}&checkout=${fim}`,
+        );
+        const dados = await r.json();
+        if (cancelado) return;
+        setConsulta({
+          chave: chavePeriodo,
+          livre: dados.conhecido ? Boolean(dados.livre) : null,
+        });
+      } catch {
+        if (!cancelado) setConsulta({ chave: chavePeriodo, livre: null });
+      }
+    }, 500);
+
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [modo, chavePeriodo]);
+
+  const contatoOk =
+    nome.trim().length >= 3 && telefone.replace(/\D/g, "").length >= 10;
+  const podeEnviar =
+    contatoOk &&
+    estado !== "enviando" &&
+    (modo === "sem-data" ? Number(pessoas) > 0 : orcamento.valido);
+
   function montarMensagem(): string {
-    const linhas = [
-      `Olá! Fiz um orçamento no site do Sítio Estâncias Feliz:`,
-      ``,
-      `Nome: ${nome}`,
-      `Entrada: ${formatarDataBR(checkin)}`,
-      `Saída: ${formatarDataBR(checkout)}`,
-      `Pessoas: ${orcamento.pessoas}`,
-      `Ocasião: ${ocasiao}`,
-    ];
-    if (hidromassagem) linhas.push(`Hidromassagem: sim`);
-    linhas.push(``, `Valor calculado: ${formatarBRL(orcamento.valorTotal)}`);
-    linhas.push(`(${orcamento.tipoCalculo})`);
+    const linhas = [`Olá! Fiz um orçamento no site do Sítio Estâncias Feliz:`, ``];
+    linhas.push(`Nome: ${nome}`);
+
+    if (modo === "com-data" && orcamento.valido) {
+      linhas.push(
+        `Entrada: ${formatarDataBR(orcamento.checkin)}`,
+        `Saída: ${formatarDataBR(orcamento.checkout)}`,
+        `Pessoas: ${orcamento.pessoas}`,
+        `Ocasião: ${ocasiao}`,
+      );
+      if (hidromassagem) linhas.push(`Hidromassagem: sim`);
+      linhas.push(
+        ``,
+        `Valor calculado: ${formatarBRL(orcamento.valorTotal)}`,
+        `(${orcamento.tipoCalculo})`,
+      );
+      if (orcamento.pacoteObrigatorio) {
+        linhas.push(`Obs: esta data é alugada como pacote fechado.`);
+      }
+    } else {
+      linhas.push(
+        `Pessoas: ${pessoas || "a definir"}`,
+        `Ocasião: ${ocasiao}`,
+        `Época pretendida: ${periodoDesejado || "ainda não sei"}`,
+        ``,
+        `Ainda não tenho data fechada e gostaria de ver as opções.`,
+      );
+    }
+
     if (observacoes.trim()) linhas.push(``, `Observações: ${observacoes.trim()}`);
-    linhas.push(``, `Gostaria de confirmar a disponibilidade dessa data.`);
     return linhas.join("\n");
   }
 
@@ -101,7 +185,6 @@ export function CalculadoraOrcamento() {
 
     setEstado("enviando");
     setMensagemErro("");
-
     const mensagem = montarMensagem();
 
     try {
@@ -109,17 +192,17 @@ export function CalculadoraOrcamento() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          temData: modo === "com-data",
           nome,
           telefone,
           email,
-          checkin,
-          checkout,
-          pessoas: orcamento.pessoas,
           ocasiao,
-          hidromassagem,
           observacoes,
-          valorCalculado: orcamento.valorTotal,
-          tipoCalculo: orcamento.tipoCalculo,
+          pessoas: Number(pessoas) || 1,
+          hidromassagem,
+          ...(modo === "com-data"
+            ? { checkin: orcamento.checkin, checkout: orcamento.checkout }
+            : { periodoDesejado }),
         }),
       });
 
@@ -129,17 +212,19 @@ export function CalculadoraOrcamento() {
       }
 
       setEstado("enviado");
-      // Abre o WhatsApp já com tudo preenchido.
       window.open(linkWhatsApp(mensagem), "_blank", "noopener,noreferrer");
     } catch (erro) {
       // O contato nunca pode se perder por causa de uma falha nossa:
       // mesmo com erro no registro, mandamos a pessoa para o WhatsApp.
       setEstado("erro");
-      setMensagemErro(
-        erro instanceof Error ? erro.message : "Erro inesperado.",
-      );
+      setMensagemErro(erro instanceof Error ? erro.message : "Erro inesperado.");
       window.open(linkWhatsApp(mensagem), "_blank", "noopener,noreferrer");
     }
+  }
+
+  // ---- Escolha inicial do caminho ----
+  if (modo === "indefinido") {
+    return <EscolhaDeCaminho onEscolher={setModo} />;
   }
 
   return (
@@ -148,40 +233,109 @@ export function CalculadoraOrcamento() {
         onSubmit={aoEnviar}
         className="space-y-8 rounded-3xl border border-mata-100 bg-white p-6 shadow-sm sm:p-8"
       >
-        {/* ---- Etapa 1: a data ---- */}
-        <fieldset>
-          <legend className="flex items-center gap-2 font-display text-lg font-semibold text-mata-900">
-            <CalendarDays className="size-5 text-terra-500" aria-hidden />
-            Quando vai ser?
-          </legend>
+        <button
+          type="button"
+          onClick={() => setModo("indefinido")}
+          className="text-sm font-medium text-mata-600 underline underline-offset-4 transition hover:text-mata-800"
+        >
+          {modo === "com-data"
+            ? "Na verdade, ainda não tenho data"
+            : "Na verdade, já sei minha data"}
+        </button>
 
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Campo label="Entrada" htmlFor="checkin">
-              <input
-                id="checkin"
-                type="date"
-                required
-                min={hojeISO()}
-                value={checkin}
-                onChange={(e) => setCheckin(e.target.value)}
-                className={estiloInput}
-              />
-            </Campo>
-            <Campo label="Saída" htmlFor="checkout">
-              <input
-                id="checkout"
-                type="date"
-                required
-                min={checkin || hojeISO()}
-                value={checkout}
-                onChange={(e) => setCheckout(e.target.value)}
-                className={estiloInput}
-              />
-            </Campo>
-          </div>
-        </fieldset>
+        {modo === "com-data" ? (
+          <fieldset>
+            <legend className="flex items-center gap-2 font-display text-lg font-semibold text-mata-900">
+              <CalendarDays className="size-5 text-terra-500" aria-hidden />
+              Quando vai ser?
+            </legend>
 
-        {/* ---- Etapa 2: o grupo ---- */}
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <Campo label="Entrada" htmlFor="checkin">
+                <input
+                  id="checkin"
+                  type="date"
+                  required
+                  min={hojeISO()}
+                  value={checkin}
+                  onChange={(e) => setCheckin(e.target.value)}
+                  className={estiloInput}
+                />
+              </Campo>
+              <Campo label="Saída" htmlFor="checkout">
+                <input
+                  id="checkout"
+                  type="date"
+                  required
+                  min={checkin || hojeISO()}
+                  value={checkout}
+                  onChange={(e) => setCheckout(e.target.value)}
+                  className={estiloInput}
+                />
+              </Campo>
+            </div>
+
+            {orcamento.pacoteObrigatorio && (
+              <div className="mt-4 flex gap-3 rounded-2xl bg-terra-500/10 p-4">
+                <CalendarCheck
+                  className="mt-0.5 size-5 shrink-0 text-terra-600"
+                  aria-hidden
+                />
+                <div className="text-sm leading-relaxed text-mata-800">
+                  <p>{orcamento.pacoteObrigatorio.motivo}</p>
+                  {orcamento.pacoteObrigatorio.inicioAlternativo && (
+                    <p className="mt-1 text-mata-600">
+                      Você também pode entrar em{" "}
+                      {formatarDataBR(
+                        orcamento.pacoteObrigatorio.inicioAlternativo,
+                      )}
+                      , pelo mesmo valor.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCheckin(orcamento.pacoteObrigatorio!.inicio);
+                      setCheckout(orcamento.pacoteObrigatorio!.fim);
+                    }}
+                    className="mt-2 font-semibold text-terra-700 underline underline-offset-4"
+                  >
+                    Usar as datas do pacote
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <AvisoAgenda agenda={agenda} />
+          </fieldset>
+        ) : (
+          <fieldset>
+            <legend className="flex items-center gap-2 font-display text-lg font-semibold text-mata-900">
+              <CalendarSearch className="size-5 text-terra-500" aria-hidden />
+              Tem alguma época em mente?
+            </legend>
+            <p className="mt-2 text-sm text-mata-600">
+              Não precisa ser exato. Ajuda a gente a te mostrar as datas livres.
+            </p>
+            <div className="mt-5">
+              <Campo
+                label="Época pretendida"
+                htmlFor="periodo"
+                opcional
+                dica="Ex: novembro, no meio do ano, feriado de setembro"
+              >
+                <input
+                  id="periodo"
+                  placeholder="Ex: um fim de semana em novembro"
+                  value={periodoDesejado}
+                  onChange={(e) => setPeriodoDesejado(e.target.value)}
+                  className={estiloInput}
+                />
+              </Campo>
+            </div>
+          </fieldset>
+        )}
+
         <fieldset>
           <legend className="flex items-center gap-2 font-display text-lg font-semibold text-mata-900">
             <Users className="size-5 text-terra-500" aria-hidden />
@@ -223,27 +377,28 @@ export function CalculadoraOrcamento() {
             </Campo>
           </div>
 
-          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl bg-areia-50 p-4">
-            <input
-              type="checkbox"
-              checked={hidromassagem}
-              onChange={(e) => setHidromassagem(e.target.checked)}
-              className="mt-0.5 size-5 shrink-0 rounded accent-terra-500"
-            />
-            <span className="text-sm text-mata-700">
-              <strong className="font-semibold text-mata-900">
-                Quero a hidromassagem
-              </strong>
-              <br />
-              Adicional de {formatarBRL(HIDROMASSAGEM_DIARIA)} por diária.
-            </span>
-          </label>
+          {modo === "com-data" && (
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl bg-areia-50 p-4">
+              <input
+                type="checkbox"
+                checked={hidromassagem}
+                onChange={(e) => setHidromassagem(e.target.checked)}
+                className="mt-0.5 size-5 shrink-0 rounded accent-terra-500"
+              />
+              <span className="text-sm text-mata-700">
+                <strong className="font-semibold text-mata-900">
+                  Quero a hidromassagem
+                </strong>
+                <br />
+                Adicional por diária.
+              </span>
+            </label>
+          )}
         </fieldset>
 
-        {/* ---- Etapa 3: contato ---- */}
         <fieldset>
           <legend className="font-display text-lg font-semibold text-mata-900">
-            Para onde enviamos a confirmação?
+            Para onde enviamos a resposta?
           </legend>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -308,7 +463,10 @@ export function CalculadoraOrcamento() {
 
         {estado === "enviado" && (
           <p className="flex items-start gap-2 rounded-2xl bg-mata-50 p-4 text-sm text-mata-800">
-            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-mata-600" aria-hidden />
+            <CheckCircle2
+              className="mt-0.5 size-4 shrink-0 text-mata-600"
+              aria-hidden
+            />
             <span>
               Pedido registrado! Abrimos o WhatsApp em outra aba — é só enviar a
               mensagem. Se não abriu, verifique o bloqueador de pop-ups.
@@ -336,76 +494,243 @@ export function CalculadoraOrcamento() {
         </p>
       </form>
 
-      {/* ---- Resumo grudado na lateral ---- */}
       <aside className="lg:sticky lg:top-24">
-        <div className="rounded-3xl border border-mata-100 bg-mata-800 p-6 text-areia-50 shadow-lg">
-          <h2 className="font-display text-lg font-semibold">Seu orçamento</h2>
-
-          {!orcamento.valido ? (
-            <p className="mt-4 text-sm leading-relaxed text-areia-200">
-              {orcamento.erro ??
-                "Preencha as datas e o número de pessoas para ver o valor."}
-            </p>
-          ) : (
-            <>
-              <p className="mt-1 text-sm text-areia-300">
-                {orcamento.tipoCalculo}
-              </p>
-
-              <dl className="mt-6 space-y-3 border-t border-mata-600 pt-5 text-sm">
-                <Linha rotulo="Diárias" valor={`${orcamento.dias}`} />
-                <Linha rotulo="Pessoas" valor={`${orcamento.pessoas}`} />
-                <Linha
-                  rotulo="Hospedagem"
-                  valor={formatarBRL(orcamento.valorBase)}
-                />
-                {orcamento.valorHidromassagem > 0 && (
-                  <Linha
-                    rotulo="Hidromassagem"
-                    valor={formatarBRL(orcamento.valorHidromassagem)}
-                  />
-                )}
-              </dl>
-
-              <div className="mt-5 border-t border-mata-600 pt-5">
-                <p className="text-xs uppercase tracking-widest text-areia-300">
-                  Valor total
-                </p>
-                <p className="font-display text-4xl font-semibold">
-                  {formatarBRL(orcamento.valorTotal)}
-                </p>
-                <p className="mt-2 text-xs leading-relaxed text-areia-300">
-                  + {formatarBRL(CAUCAO)} de caução, devolvida integralmente ao
-                  final se estiver tudo certo.
-                </p>
-              </div>
-
-              {orcamento.feriado && (
-                <p className="mt-5 rounded-2xl bg-mata-900/60 p-4 text-xs leading-relaxed text-areia-200">
-                  Sua data cai no pacote{" "}
-                  <strong className="text-white">
-                    {orcamento.feriado.nome}
-                  </strong>
-                  , que tem valor fechado.
-                </p>
-              )}
-
-              {orcamento.upsell && (
-                <p className="mt-4 flex gap-2 rounded-2xl bg-terra-500/20 p-4 text-xs leading-relaxed text-areia-100">
-                  <Lightbulb className="mt-0.5 size-4 shrink-0 text-terra-400" aria-hidden />
-                  <span>{orcamento.upsell}</span>
-                </p>
-              )}
-            </>
-          )}
-
-          <p className="mt-6 text-xs leading-relaxed text-areia-300">
-            Este valor é uma estimativa automática. A confirmação da data
-            acontece pelo WhatsApp.
-          </p>
-        </div>
+        {modo === "com-data" ? (
+          <ResumoComData orcamento={orcamento} />
+        ) : (
+          <ResumoSemData />
+        )}
       </aside>
     </div>
+  );
+}
+
+// ============================================================
+//  Escolha do caminho
+// ============================================================
+
+function EscolhaDeCaminho({
+  onEscolher,
+}: {
+  onEscolher: (m: Modo) => void;
+}) {
+  return (
+    <div className="mx-auto max-w-3xl">
+      <h2 className="text-center font-display text-2xl font-semibold text-mata-900">
+        Você já tem uma data em mente?
+      </h2>
+      <p className="mt-2 text-center text-mata-600">
+        Nos dois casos a gente responde na hora.
+      </p>
+
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => onEscolher("com-data")}
+          className="group rounded-3xl border-2 border-mata-100 bg-white p-7 text-left transition hover:border-terra-500 hover:shadow-lg"
+        >
+          <span className="inline-flex rounded-2xl bg-terra-500/10 p-3">
+            <CalendarDays className="size-6 text-terra-600" aria-hidden />
+          </span>
+          <h3 className="mt-4 font-display text-xl font-semibold text-mata-900">
+            Já sei minha data
+          </h3>
+          <p className="mt-2 leading-relaxed text-mata-600">
+            Calculamos o valor exato daquele período e conferimos na hora se
+            está livre.
+          </p>
+          <span className="mt-4 inline-block font-semibold text-terra-600 transition group-hover:underline">
+            Calcular minha data →
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onEscolher("sem-data")}
+          className="group rounded-3xl border-2 border-mata-100 bg-white p-7 text-left transition hover:border-mata-400 hover:shadow-lg"
+        >
+          <span className="inline-flex rounded-2xl bg-mata-50 p-3">
+            <CalendarSearch className="size-6 text-mata-600" aria-hidden />
+          </span>
+          <h3 className="mt-4 font-display text-xl font-semibold text-mata-900">
+            Ainda não decidi
+          </h3>
+          <p className="mt-2 leading-relaxed text-mata-600">
+            Mostramos a tabela completa de valores e ajudamos você a escolher a
+            melhor data.
+          </p>
+          <span className="mt-4 inline-block font-semibold text-mata-700 transition group-hover:underline">
+            Ver a tabela de preços →
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  Resumos
+// ============================================================
+
+function ResumoComData({
+  orcamento,
+}: {
+  orcamento: ReturnType<typeof calcularOrcamento>;
+}) {
+  return (
+    <div className="rounded-3xl border border-mata-100 bg-mata-800 p-6 text-areia-50 shadow-lg">
+      <h2 className="font-display text-lg font-semibold">Seu orçamento</h2>
+
+      {!orcamento.valido ? (
+        <p className="mt-4 text-sm leading-relaxed text-areia-200">
+          {orcamento.erro ??
+            "Preencha as datas e o número de pessoas para ver o valor."}
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-sm text-areia-300">{orcamento.tipoCalculo}</p>
+
+          <dl className="mt-6 space-y-3 border-t border-mata-600 pt-5 text-sm">
+            <Linha
+              rotulo="Entrada"
+              valor={formatarDataBR(orcamento.checkin)}
+            />
+            <Linha rotulo="Saída" valor={formatarDataBR(orcamento.checkout)} />
+            <Linha rotulo="Diárias" valor={`${orcamento.dias}`} />
+            <Linha rotulo="Pessoas" valor={`${orcamento.pessoas}`} />
+            <Linha
+              rotulo="Hospedagem"
+              valor={formatarBRL(orcamento.valorBase)}
+            />
+            {orcamento.valorHidromassagem > 0 && (
+              <Linha
+                rotulo="Hidromassagem"
+                valor={formatarBRL(orcamento.valorHidromassagem)}
+              />
+            )}
+          </dl>
+
+          <div className="mt-5 border-t border-mata-600 pt-5">
+            <p className="text-xs uppercase tracking-widest text-areia-300">
+              Valor total
+            </p>
+            <p className="font-display text-4xl font-semibold">
+              {formatarBRL(orcamento.valorTotal)}
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-areia-300">
+              + {formatarBRL(CAUCAO)} de caução, devolvida integralmente ao
+              final se estiver tudo certo.
+            </p>
+          </div>
+
+          {orcamento.feriado && (
+            <p className="mt-5 rounded-2xl bg-mata-900/60 p-4 text-xs leading-relaxed text-areia-200">
+              Sua data cai no pacote{" "}
+              <strong className="text-white">{orcamento.feriado.nome}</strong>,
+              que tem valor fechado.
+            </p>
+          )}
+
+          {orcamento.upsell && (
+            <p className="mt-4 flex gap-2 rounded-2xl bg-terra-500/20 p-4 text-xs leading-relaxed text-areia-100">
+              <Lightbulb
+                className="mt-0.5 size-4 shrink-0 text-terra-400"
+                aria-hidden
+              />
+              <span>{orcamento.upsell}</span>
+            </p>
+          )}
+        </>
+      )}
+
+      <p className="mt-6 text-xs leading-relaxed text-areia-300">
+        Este valor é uma estimativa automática. A confirmação da data acontece
+        pelo WhatsApp.
+      </p>
+    </div>
+  );
+}
+
+function ResumoSemData() {
+  const ano = new Date().getFullYear();
+  const tabela = tabelaDePrecos(ano);
+  const hidro = comReajuste(HIDROMASSAGEM_DIARIA, ano);
+
+  return (
+    <div className="rounded-3xl border border-mata-100 bg-mata-800 p-6 text-areia-50 shadow-lg">
+      <h2 className="font-display text-lg font-semibold">Tabela de valores</h2>
+      <p className="mt-1 text-sm text-areia-300">
+        Valores da estadia inteira, não por pessoa.
+      </p>
+
+      <ul className="mt-6 space-y-4 border-t border-mata-600 pt-5">
+        {tabela.map((l) => (
+          <li key={l.titulo}>
+            <p className="text-sm font-medium">{l.titulo}</p>
+            <p className="text-xs text-areia-300">{l.detalhe}</p>
+            <p className="mt-1 font-display text-xl font-semibold">
+              {l.prefixo && (
+                <span className="mr-1 text-xs font-normal uppercase tracking-wide text-areia-300">
+                  {l.prefixo}
+                </span>
+              )}
+              {formatarBRL(l.valor)}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 space-y-2 border-t border-mata-600 pt-5 text-xs leading-relaxed text-areia-200">
+        <p>Hidromassagem: {formatarBRL(hidro)} por diária, se quiser.</p>
+        <p>Caução de {formatarBRL(CAUCAO)}, devolvida ao final.</p>
+        <p>
+          Feriados têm pacotes próprios, com período fechado. Diga a época que
+          você pensa e a gente calcula certinho.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+//  Peças de interface
+// ============================================================
+
+function AvisoAgenda({ agenda }: { agenda: Agenda }) {
+  if (agenda.situacao === "ocioso") return null;
+
+  const conteudo = {
+    checando: {
+      icone: <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />,
+      texto: "Conferindo se essa data está livre...",
+      classe: "bg-mata-50 text-mata-700",
+    },
+    livre: {
+      icone: <CheckCircle2 className="size-4 shrink-0" aria-hidden />,
+      texto: "Essa data está livre! Garanta agora, elas costumam voar.",
+      classe: "bg-mata-100 text-mata-800",
+    },
+    ocupado: {
+      icone: <XCircle className="size-4 shrink-0" aria-hidden />,
+      texto:
+        "Essa data já está reservada. Envie assim mesmo que a gente sugere as datas livres mais próximas.",
+      classe: "bg-amber-50 text-amber-800",
+    },
+    desconhecido: {
+      icone: <AlertCircle className="size-4 shrink-0" aria-hidden />,
+      texto:
+        "Não conseguimos conferir a agenda agora. Envie o pedido que confirmamos pelo WhatsApp.",
+      classe: "bg-areia-100 text-mata-700",
+    },
+  }[agenda.situacao];
+
+  return (
+    <p
+      className={`mt-4 flex items-center gap-2 rounded-2xl p-4 text-sm ${conteudo.classe}`}
+    >
+      {conteudo.icone}
+      <span>{conteudo.texto}</span>
+    </p>
   );
 }
 
@@ -449,10 +774,4 @@ function Linha({ rotulo, valor }: { rotulo: string; valor: string }) {
       <dd className="font-medium">{valor}</dd>
     </div>
   );
-}
-
-function formatarDataBR(iso: string): string {
-  if (!iso) return "";
-  const [ano, mes, dia] = iso.split("-");
-  return `${dia}/${mes}/${ano}`;
 }

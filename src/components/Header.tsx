@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Menu, X, MessageCircle } from "lucide-react";
 import { linkWhatsApp } from "@/lib/site-config";
@@ -17,6 +18,14 @@ const LINKS = [
 export function Header() {
   const [aberto, setAberto] = useState(false);
   const [rolou, setRolou] = useState(false);
+  const caminho = usePathname();
+
+  /**
+   * Só a home tem o hero escuro atrás do cabeçalho. Nas outras páginas o
+   * fundo é claro, e um cabeçalho transparente deixaria o logo branco
+   * invisível — por isso ali ele já nasce sólido.
+   */
+  const precisaDeFundo = caminho !== "/" || rolou || aberto;
 
   useEffect(() => {
     const aoRolar = () => setRolou(window.scrollY > 24);
@@ -36,7 +45,7 @@ export function Header() {
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
-        rolou || aberto
+        precisaDeFundo
           ? "bg-mata-900/95 shadow-lg shadow-mata-950/20 backdrop-blur"
           : "bg-gradient-to-b from-mata-950/70 to-transparent"
       }`}

@@ -17,33 +17,70 @@ Feito em Next.js 16 (App Router) + Tailwind CSS v4 + Supabase.
 
 ---
 
-## Ligação com o agente de IA do WhatsApp
+## O site é o cérebro do agente de WhatsApp
 
 A atendente virtual (**Júlia**) roda em n8n e conversa pela Evolution API.
-O site **compartilha o mesmo banco Supabase** que ela usa, então:
-
-- Reservas fechadas pela Júlia aparecem na agenda do painel.
-- O motor de preços do site é um porte fiel do nó `Processar Calendar e Preco1`
-  do workflow *Atendimento Sítio v3*.
-
-> **Importante:** se um preço mudar, mude nos **dois** lugares —
-> `src/lib/pricing.ts` e o workflow no n8n. Preço divergente entre o site e o
-> WhatsApp é a forma mais rápida de perder a confiança do cliente.
-> Os testes em `src/lib/pricing.test.ts` travam os valores atuais.
-
-Arquitetura resumida:
+Ela **não calcula preço nem consulta agenda por conta própria**: chama
+`/api/consultar` neste site e recebe os fatos prontos.
 
 ```
 Cliente no WhatsApp
       ↓
 Evolution API (api.estanciasfeliz.com.br, instância "sitio-atendimento")
       ↓ webhook
-n8n (n8n.estanciasfeliz.com.br) — workflow "Atendimento Sítio v3"
-      ↓                    ↓                      ↓
-   OpenAI            Google Calendar          Supabase
-                                                  ↑
-                                          Site (este projeto)
+n8n (n8n.estanciasfeliz.com.br) — "Atendimento Sítio v4"
+      ↓                                    ↓
+   OpenAI  ←── fatos prontos ────  POST /api/consultar  (este site)
+   (só redige)                            ↓
+                                    pricing.ts + agenda.ts
+                                          ↓
+                                       Supabase
+                                          ↑
+                              Painel /admin (reservas e bloqueios)
 ```
+
+Por que assim:
+
+- **Uma regra, um lugar.** Preço mora só em `src/lib/pricing.ts`. Antes
+  estava duplicado em nós de código do n8n e dentro dos prompts, e os dois
+  canais divergiam.
+- **A IA não inventa número.** O campo `fatos` da resposta traz o valor
+  oficial e a disponibilidade; o prompt manda a Júlia escrever só em cima
+  dele.
+- **Adeus Google Calendar.** Ele vivia perdendo a autenticação e derrubava
+  o atendimento. A agenda agora é o painel `/admin`, no mesmo banco.
+
+### Trocar o workflow do n8n
+
+O v4 está em `n8n/atendimento-sitio-v4.json` e já foi importado **inativo**.
+Para ativar:
+
+1. Publicar este site em `estanciasfeliz.com.br` (o v4 depende da API).
+2. No n8n, definir a variável de ambiente `SITIO_API_TOKEN` com o mesmo
+   valor de `API_TOKEN` na Vercel.
+3. Apontar o webhook da Evolution para `/webhook/sitio-v4`:
+   ```bash
+   curl -X POST -H "apikey: $EVOLUTION_KEY" -H "Content-Type: application/json" \
+     -d '{"webhook":{"enabled":true,"url":"https://n8n.estanciasfeliz.com.br/webhook/sitio-v4","events":["MESSAGES_UPSERT"]}}' \
+     https://api.estanciasfeliz.com.br/webhook/set/sitio-atendimento
+   ```
+4. Desativar o v3, senão os dois respondem ao mesmo cliente.
+
+### Regras de preço que valem conhecer
+
+- **Reajuste anual de 10%** sobre a tabela de 2026, todo 1º de janeiro.
+  A caução não reajusta — é depósito, não preço.
+- **Feriados são calculados**, nunca digitados: as datas móveis saem do
+  algoritmo da Páscoa. A tabela escrita à mão que existia antes errava o
+  Carnaval de 2027 em quatro dias.
+- **Bloco obrigatório por dia da semana.** Feriado na quinta fecha de
+  quinta a domingo; na sexta ou no sábado, de sexta a domingo; na segunda,
+  de sexta a segunda; na terça, de sábado a terça (sexta também vale).
+  Na quarta não forma pacote. Carnaval é exceção: sexta à quarta de cinzas.
+- **Feriados municipais** de BH, Sarzedo e Ibirité entram como pacote de
+  R$ 3.600 (base 2026).
+
+Os testes em `src/lib/pricing.test.ts` travam tudo isso.
 
 ---
 
@@ -65,20 +102,24 @@ Abre em <http://localhost:3000>.
 | `SUPABASE_SERVICE_ROLE_KEY` | Acesso de servidor ao banco | Supabase → Project Settings → API Keys |
 | `ADMIN_SENHA` | Senha de entrada em `/admin` | Você escolhe |
 | `ADMIN_SECRET` | Assina o cookie de sessão | `openssl rand -hex 32` |
+| `API_TOKEN` | Autentica o n8n em `/api/consultar` | `openssl rand -hex 32` |
 
 A `SUPABASE_SERVICE_ROLE_KEY` ignora as regras de segurança do banco.
 Ela só pode existir no servidor — **nunca** use o prefixo `NEXT_PUBLIC_` nela.
 
 ### Banco de dados
 
-Rode uma vez, no SQL Editor do Supabase:
+Rode na ordem, no SQL Editor do Supabase:
 
 ```
 supabase/migrations/001_orcamentos.sql
+supabase/migrations/002_agenda.sql
 ```
 
-Cria `orcamentos` e `datas_bloqueadas`, liga RLS nas duas e aplica a migração
-pendente da tabela `sessoes` que o workflow v3 do n8n espera.
+O `001` cria `orcamentos` e `datas_bloqueadas` e liga RLS nas duas.
+O `002` acrescenta `status` às `reservas` (sem ele não há como cancelar uma
+reserva, e a data ficaria presa para sempre) e permite orçamento sem data,
+para não perder o contato de quem pergunta preço antes de escolher o dia.
 
 ---
 

@@ -29,12 +29,17 @@ import {
   linkWhatsApp,
 } from "@/lib/site-config";
 import {
-  ESTADIA_CURTA,
-  ESTADIA_DIARIA,
-  ESTADIA_FDS,
   HIDROMASSAGEM_DIARIA,
+  comReajuste,
   formatarBRL,
+  tabelaDePrecos,
 } from "@/lib/pricing";
+
+/**
+ * Os valores sobem 10% na virada do ano. Sem esta revalidação a página
+ * ficaria congelada no preço do ano em que foi publicada.
+ */
+export const revalidate = 3600;
 
 const ICONES = {
   home: Home,
@@ -50,33 +55,11 @@ const DESTAQUES = [
   { icone: PartyPopper, valor: `${CAPACIDADE.eventoMax}`, rotulo: "pessoas em evento" },
 ];
 
-/** Valores de vitrine. O cálculo exato acontece na página de orçamento. */
-const TABELA_PRECOS = [
-  {
-    titulo: "Fim de semana completo",
-    detalhe: "Sexta a domingo, 2 diárias",
-    valor: ESTADIA_FDS,
-    destaque: true,
-  },
-  {
-    titulo: "Uma diária no fim de semana",
-    detalhe: "Entrada na sexta ou no sábado",
-    valor: ESTADIA_CURTA,
-  },
-  {
-    titulo: "Diária durante a semana",
-    detalhe: "De segunda a quinta, por dia",
-    valor: ESTADIA_DIARIA,
-  },
-  {
-    titulo: "Eventos acima de 30 pessoas",
-    detalhe: "Valor conforme o número de convidados",
-    valor: 3200,
-    prefixo: "a partir de",
-  },
-];
-
 export default function PaginaInicial() {
+  const ano = new Date().getFullYear();
+  const tabela = tabelaDePrecos(ano);
+  const hidromassagem = comReajuste(HIDROMASSAGEM_DIARIA, ano);
+
   return (
     <>
       <Header />
@@ -204,7 +187,7 @@ export default function PaginaInicial() {
                 <Waves className="size-6 shrink-0" aria-hidden />
                 <p className="text-sm font-medium leading-snug">
                   Hidromassagem opcional por{" "}
-                  {formatarBRL(HIDROMASSAGEM_DIARIA)} a diária
+                  {formatarBRL(hidromassagem)} a diária
                 </p>
               </div>
               <div className="flex items-center gap-3 rounded-2xl bg-mata-700 p-5 text-areia-50">
@@ -248,7 +231,7 @@ export default function PaginaInicial() {
             </div>
 
             <div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-              {TABELA_PRECOS.map((p) => (
+              {tabela.map((p) => (
                 <div
                   key={p.titulo}
                   className={`flex flex-col rounded-3xl border p-7 ${

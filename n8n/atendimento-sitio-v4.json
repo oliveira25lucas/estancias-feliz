@@ -1,0 +1,415 @@
+{
+  "name": "Atendimento Sítio v4 — site como cérebro",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sitio-v4",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Webhook Evolution",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        0
+      ],
+      "webhookId": "a1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Remove tudo que não é mensagem de cliente: eco, grupo, reação,\n// status e protocolo. Sem isso o agente responde a si mesmo.\nconst body = $input.first().json.body;\nif (!body) return [];\n\nconst msg = body.data || body;\nconst key = msg.key || {};\nconst message = msg.message || {};\n\nif (key.fromMe === true) return [];\nif (key.remoteJid && key.remoteJid.includes('@g.us')) return [];\nif (key.remoteJid === 'status@broadcast') return [];\nif (message.reactionMessage) return [];\nif (message.editedMessage || message.protocolMessage) return [];\nif (msg.messageType === 'protocolMessage') return [];\n\nconst telefone = (key.remoteJid || '').replace('@s.whatsapp.net', '');\nif (!telefone) return [];\n\nlet texto = '';\nlet tipo = 'texto';\nif (message.conversation) {\n  texto = message.conversation;\n} else if (message.extendedTextMessage) {\n  texto = message.extendedTextMessage.text || '';\n} else if (message.audioMessage) {\n  tipo = 'audio';\n} else if (message.imageMessage) {\n  tipo = 'imagem';\n  texto = message.imageMessage.caption || '';\n} else {\n  return [];\n}\n\nreturn [{\n  json: {\n    telefone,\n    texto: (texto || '').trim(),\n    tipo,\n    nomeWhats: msg.pushName || '',\n    messageId: key.id || '',\n    recebidoEm: new Date().toISOString(),\n  }\n}];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "Filtrar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/sessoes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "telefone",
+              "value": "=eq.{{ $json.telefone }}"
+            },
+            {
+              "name": "select",
+              "value": "*"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Carregar Sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "FYXApVAie7V8KyCD",
+          "name": "Supabase API"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Junta o que já sabemos da conversa com a mensagem nova e monta o\n// pedido de extração. A IA aqui só LÊ: não decide preço nem agenda.\nconst entrada = $('Filtrar Mensagem').first().json;\nconst linhas = $input.all();\nconst sessao = (linhas[0] && linhas[0].json && linhas[0].json.telefone) ? linhas[0].json : {};\n\nconst hoje = new Date();\nconst hojeISO = hoje.toISOString().slice(0, 10);\nconst diasSemana = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];\n\nconst historico = sessao.historico_resumido || '';\n\nconst instrucao = [\n  'Você extrai dados de uma conversa de WhatsApp sobre aluguel de um sítio.',\n  'Responda SOMENTE com JSON válido, sem texto em volta.',\n  '',\n  'Campos:',\n  '  intencao: uma de SAUDACAO, PEDIR_PRECO, INFORMAR_DATA, INFORMAR_PESSOAS,',\n  '            DUVIDA, QUER_VISITAR, QUER_FECHAR, DESPEDIDA, OUTRO',\n  '  data_checkin: YYYY-MM-DD ou null',\n  '  data_checkout: YYYY-MM-DD ou null',\n  '  qtd_pessoas: número ou null',\n  '  nome: nome da pessoa, se ela disser, ou null',\n  '  hidromassagem: true se pedir, senão false',\n  '  pergunta: a dúvida em uma frase, se houver, ou null',\n  '',\n  'Regras de data:',\n  '  Hoje é ' + hojeISO + ' (' + diasSemana[hoje.getDay()] + ').',\n  '  \"fim de semana que vem\" = a próxima sexta até o domingo seguinte.',\n  '  Se a pessoa der só uma data, deixe checkout null.',\n  '  NUNCA invente datas que a pessoa não disse.',\n].join('\\n');\n\nconst contexto = [\n  historico ? 'Conversa até agora:\\n' + historico : 'Primeira mensagem desta pessoa.',\n  '',\n  'Já sabemos:',\n  '  nome: ' + (sessao.nome || 'não informado'),\n  '  check-in: ' + (sessao.data_checkin || 'não informado'),\n  '  check-out: ' + (sessao.data_checkout || 'não informado'),\n  '  pessoas: ' + (sessao.qtd_pessoas || 'não informado'),\n  '',\n  'Mensagem nova: ' + (entrada.tipo === 'audio' ? '[áudio recebido]' : entrada.texto),\n].join('\\n');\n\nreturn [{\n  json: {\n    telefone: entrada.telefone,\n    texto: entrada.texto,\n    tipo: entrada.tipo,\n    nomeWhats: entrada.nomeWhats,\n    sessao,\n    instrucao,\n    contexto,\n  }\n}];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Montar Extração",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', temperature: 0, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $json.instrucao }, { role: 'user', content: $json.contexto } ] }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "IA Extrair Dados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "NN9XxWN3YvKvrWrd",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Funde o que a IA extraiu com o que a sessão já guardava. Dado novo\n// vence dado velho; o que não veio, mantém.\nconst base = $('Montar Extração').first().json;\nconst sessao = base.sessao || {};\n\nlet extraido = {};\ntry {\n  const bruto = $input.first().json.choices[0].message.content;\n  extraido = JSON.parse(bruto);\n} catch (e) {\n  extraido = { intencao: 'OUTRO' };\n}\n\nconst escolher = (novo, antigo) =>\n  (novo !== null && novo !== undefined && novo !== '') ? novo : (antigo ?? null);\n\nconst checkin = escolher(extraido.data_checkin, sessao.data_checkin);\nconst checkout = escolher(extraido.data_checkout, sessao.data_checkout);\nconst pessoas = escolher(extraido.qtd_pessoas, sessao.qtd_pessoas);\nconst nome = escolher(extraido.nome, sessao.nome) || base.nomeWhats || null;\n\n// Só faz sentido consultar preço com data E número de pessoas.\nconst temTudo = Boolean(checkin && checkout && pessoas);\n\nreturn [{\n  json: {\n    telefone: base.telefone,\n    texto: base.texto,\n    tipo: base.tipo,\n    nome,\n    intencao: extraido.intencao || 'OUTRO',\n    pergunta: extraido.pergunta || null,\n    hidromassagem: extraido.hidromassagem === true,\n    data_checkin: checkin,\n    data_checkout: checkout,\n    qtd_pessoas: pessoas,\n    temTudo,\n    historico_resumido: sessao.historico_resumido || '',\n    // O site aceita corpo sem data: nesse caso devolve a tabela de preços.\n    corpoConsulta: {\n      checkin: temTudo ? checkin : '',\n      checkout: temTudo ? checkout : '',\n      pessoas: pessoas || 0,\n      hidromassagem: extraido.hidromassagem === true,\n    },\n  }\n}];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Preparar Consulta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://estanciasfeliz.com.br/api/consultar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-token",
+              "value": "={{ $env.SITIO_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.corpoConsulta) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "name": "Consultar Site",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Monta o prompt final. Os \"fatos\" vêm prontos do site — preço e\n// disponibilidade — e a IA só pode escrever em cima deles.\nconst dados = $('Preparar Consulta').first().json;\nconst resposta = $input.first().json;\nconst fatos = resposta.fatos || 'Não foi possível obter preço nem disponibilidade agora.';\n\nconst persona = [\n  'Você é a Júlia, atendente do Sítio Estâncias Feliz, em Sarzedo/MG.',\n  'Mineira, simpática, direta. Escreve como gente, não como robô.',\n  '',\n  '## REGRA ABSOLUTA',\n  'Os FATOS abaixo vêm do sistema e são a única verdade sobre preço e',\n  'disponibilidade. Nunca invente valor, nunca arredonde, nunca afirme que',\n  'uma data está livre se os fatos não disserem isso.',\n  '',\n  '## COMO ESCREVER',\n  '- No máximo 90 palavras. Cliente não lê textão.',\n  '- Use o nome da pessoa quando souber.',\n  '- Venda a experiência: piscina com cascata, churrasqueira, a família reunida.',\n  '- Termine com uma pergunta que leve ao próximo passo.',\n  '- Nada de markdown, nada de asteriscos. É WhatsApp.',\n  '',\n  '## SOBRE O SÍTIO',\n  '- Rod. BH-Brumadinho (MG-040), Km 30. A 30 km de BH.',\n  '- 6 quartos (1 suíte), 3 banheiros, TV e WiFi. Até 30 pessoas para dormir.',\n  '- Salão de festas (52 cadeiras, 15 mesas), churrasqueira, sinuca, quadra.',\n  '- Piscina NÃO aquecida, 1,40m a 1,90m. Cascata das 9h-12h e 14h-17h.',\n  '- Som liberado a qualquer horário.',\n  '- Cozinha completa. Fogão industrial só para eventos acima de 30 pessoas.',\n  '- NÃO fornecemos: travesseiro, roupa de cama, edredom, cobertor, toalha.',\n  '- Check-in: seg a sex 6h, sáb e dom 10h. Check-out 16h. Horários fixos.',\n  '- Pagamento: 50% de sinal no contrato, 50% no check-in, mais a caução.',\n  '- Visitas: agendadas antes do contrato. Encaminhe para o Lucas.',\n].join('\\n');\n\nconst pedido = [\n  '## FATOS DO SISTEMA (única fonte de preço e disponibilidade)',\n  fatos,\n  '',\n  '## CONTEXTO',\n  'Nome: ' + (dados.nome || 'ainda não sei'),\n  'Intenção detectada: ' + dados.intencao,\n  dados.pergunta ? 'Dúvida: ' + dados.pergunta : '',\n  dados.historico_resumido ? '\\nConversa até agora:\\n' + dados.historico_resumido : '',\n  '',\n  'Mensagem do cliente: ' + (dados.tipo === 'audio'\n    ? '[mandou um áudio; peça gentilmente para escrever]'\n    : dados.texto),\n  '',\n  'Escreva a resposta da Júlia.',\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { persona, pedido, dados } }];"
+      },
+      "id": "a1000000-0000-4000-8000-000000000008",
+      "name": "Montar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o', temperature: 0.7, max_tokens: 400, messages: [ { role: 'system', content: $json.persona }, { role: 'user', content: $json.pedido } ] }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000009",
+      "name": "IA Gerar Resposta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "NN9XxWN3YvKvrWrd",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrai o texto da IA e prepara o que vai para o WhatsApp e para a sessão.\nconst dados = $('Montar Resposta').first().json.dados;\n\nlet texto = '';\ntry {\n  texto = $input.first().json.choices[0].message.content.trim();\n} catch (e) {\n  texto = 'Oi! Tive um probleminha técnico aqui. Pode repetir, por favor?';\n}\n\n// Histórico curto: só os últimos turnos, para o prompt não crescer sem fim.\nconst anterior = dados.historico_resumido || '';\nconst novoTurno = 'Cliente: ' + (dados.texto || '[áudio]') + '\\nJúlia: ' + texto;\nconst historico = (anterior + '\\n' + novoTurno)\n  .split('\\n')\n  .filter(Boolean)\n  .slice(-32)\n  .join('\\n');\n\nreturn [{\n  json: {\n    telefone: dados.telefone,\n    texto,\n    sessao: {\n      telefone: dados.telefone,\n      nome: dados.nome,\n      data_checkin: dados.data_checkin,\n      data_checkout: dados.data_checkout,\n      qtd_pessoas: dados.qtd_pessoas,\n      historico_resumido: historico,\n      updated_at: new Date().toISOString(),\n    }\n  }\n}];"
+      },
+      "id": "a1000000-0000-4000-8000-00000000000a",
+      "name": "Preparar Envio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.estanciasfeliz.com.br/message/sendText/sitio-atendimento",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.telefone, text: $json.texto, delay: 1200 }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000000b",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        -100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "dWBtN3XHlRgSdgKU",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/sessoes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.sessao) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-00000000000c",
+      "name": "Salvar Sessão",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        100
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "FYXApVAie7V8KyCD",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Atendimento Sítio v4\n\n**O site é o cérebro.** O nó `Consultar Site` chama\n`/api/consultar` e recebe preço e disponibilidade prontos.\nA IA só redige em cima desses fatos.\n\n### O que mudou em relação à v3\n- Saiu o Google Calendar (vivia desconectando). A agenda agora\n  mora no Supabase e é editável pelo painel do site.\n- Saiu todo cálculo de preço em código. Regra de preço existe\n  num lugar só: `src/lib/pricing.ts` no site.\n- 11 nós no lugar de 35.\n\n### Antes de ativar\n1. O site precisa estar publicado em estanciasfeliz.com.br.\n2. Definir a variável de ambiente `SITIO_API_TOKEN` no n8n,\n   com o mesmo valor de `API_TOKEN` na Vercel.\n3. Apontar o webhook da Evolution para `/webhook/sitio-v4`.\n4. Desativar o workflow v3 para os dois não responderem juntos.",
+        "height": 420,
+        "width": 460,
+        "color": 4
+      },
+      "id": "a1000000-0000-4000-8000-00000000000d",
+      "name": "Leia-me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        -460
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Evolution": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Carregar Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carregar Sessão": {
+      "main": [
+        [
+          {
+            "node": "Montar Extração",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Extração": {
+      "main": [
+        [
+          {
+            "node": "IA Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "Preparar Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Consulta": {
+      "main": [
+        [
+          {
+            "node": "Consultar Site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Site": {
+      "main": [
+        [
+          {
+            "node": "Montar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Resposta": {
+      "main": [
+        [
+          {
+            "node": "IA Gerar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Gerar Resposta": {
+      "main": [
+        [
+          {
+            "node": "Preparar Envio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Envio": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Salvar Sessão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

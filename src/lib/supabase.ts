@@ -57,15 +57,31 @@ export type Orcamento = {
   origem: string;
 };
 
-/** Espelha a tabela `reservas` que o workflow do n8n já alimenta. */
+/**
+ * Espelha a tabela `reservas`, que a Júlia já alimenta pelo n8n.
+ * Os nomes das colunas vêm do nó "Criar Reserva1" do workflow — não
+ * renomear sem mexer lá também.
+ */
 export type Reserva = {
   id: string | number;
+  created_at: string | null;
   telefone: string | null;
-  nome: string | null;
+  nome_cliente: string | null;
+  tipo_evento: string | null;
+  qtd_pessoas: number | null;
   data_checkin: string | null;
   data_checkout: string | null;
-  qtd_pessoas: number | null;
-  valor_total: number | null;
-  status: string | null;
-  created_at: string | null;
+  valor_final: number | null;
+  tipo_reserva: string | null;
+  /** Coluna acrescentada pelo site: reserva cancelada não ocupa a data. */
+  status: "confirmada" | "pre_reserva" | "cancelada" | null;
+  origem: string | null;
+};
+
+export type DatasBloqueadas = {
+  id: string;
+  criado_em: string;
+  data_inicio: string;
+  data_fim: string;
+  motivo: string | null;
 };

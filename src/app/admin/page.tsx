@@ -13,6 +13,7 @@ import { formatarBRL } from "@/lib/pricing";
 import { sair } from "./actions";
 import { TabelaOrcamentos } from "./TabelaOrcamentos";
 import { CalendarioAdmin, type Bloqueio } from "./CalendarioAdmin";
+import { GerenciarReservas } from "./GerenciarReservas";
 
 export const metadata: Metadata = {
   title: "Painel administrativo",
@@ -167,6 +168,9 @@ export default async function PaginaAdmin() {
               orcamentos={orcamentos}
               bloqueios={bloqueios}
             />
+          </div>
+          <div className="mt-5">
+            <GerenciarReservas reservas={reservas} />
           </div>
         </section>
 

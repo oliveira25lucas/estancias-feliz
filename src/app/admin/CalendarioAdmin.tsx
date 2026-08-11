@@ -72,11 +72,12 @@ export function CalendarioAdmin({
 
     for (const r of reservas) {
       if (!r.data_checkin) continue;
+      if (r.status === "cancelada") continue; // reserva cancelada libera a data
       const fim = r.data_checkout ?? r.data_checkin;
       for (const dia of diasDoPeriodo(r.data_checkin, fim, !r.data_checkout)) {
         marcar(dia, {
           tipo: "reserva",
-          descricao: `Reserva: ${r.nome ?? r.telefone ?? "sem nome"}${
+          descricao: `Reserva: ${r.nome_cliente ?? r.telefone ?? "sem nome"}${
             r.qtd_pessoas ? ` (${r.qtd_pessoas} pessoas)` : ""
           }`,
         });
