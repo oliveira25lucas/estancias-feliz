@@ -106,16 +106,15 @@ export default function PaginaInicial() {
               >
                 Calcular meu orçamento
               </Link>
-              <a
-                href={linkWhatsApp(
-                  "Olá! Vi o site do Sítio Estâncias Feliz e quero saber sobre disponibilidade.",
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
+              {/* Antes este botão jogava para o WhatsApp. Não fazia sentido:
+                  a própria calculadora consulta a agenda na hora. Aqui o
+                  papel dele é deixar quem acabou de chegar ver o lugar. */}
+              <Link
+                href="/#fotos"
                 className="w-full rounded-full border border-white/30 bg-white/10 px-8 py-4 text-base font-semibold text-white backdrop-blur transition hover:bg-white/20 sm:w-auto"
               >
-                Consultar uma data
-              </a>
+                Ver as fotos
+              </Link>
             </div>
 
             <dl className="surgir mx-auto mt-16 grid max-w-3xl grid-cols-2 gap-6 border-t border-white/15 pt-10 sm:grid-cols-4">

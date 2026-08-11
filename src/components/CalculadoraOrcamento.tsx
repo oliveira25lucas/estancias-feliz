@@ -647,8 +647,19 @@ function ResumoComData({
           {orcamento.feriado && (
             <p className="mt-5 rounded-2xl bg-mata-900/60 p-4 text-xs leading-relaxed text-areia-200">
               Sua data cai no pacote{" "}
-              <strong className="text-white">{orcamento.feriado.nome}</strong>,
-              que tem valor fechado.
+              <strong className="text-white">{orcamento.feriado.nome}</strong>
+              {orcamento.diasForaDoFeriado > 0 ? (
+                <>
+                  , de {formatarDataBR(orcamento.feriado.inicio)} a{" "}
+                  {formatarDataBR(orcamento.feriado.fim)}. As outras{" "}
+                  {orcamento.diasForaDoFeriado} diária
+                  {orcamento.diasForaDoFeriado > 1 ? "s" : ""} da sua estadia
+                  {orcamento.diasForaDoFeriado > 1 ? " são cobradas" : " é cobrada"}{" "}
+                  à parte.
+                </>
+              ) : (
+                ", que tem valor fechado."
+              )}
             </p>
           )}
 

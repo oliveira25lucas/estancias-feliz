@@ -362,6 +362,11 @@ export type OrcamentoResultado = {
   /** Explicação legível de como o valor foi formado. */
   tipoCalculo: string;
   feriado?: Feriado;
+  /**
+   * Diárias que ficam FORA do bloco do feriado e são cobradas à parte.
+   * Zero quando a estadia cabe exatamente no pacote.
+   */
+  diasForaDoFeriado: number;
   ehEvento: boolean;
   caucao: number;
   /** Ano usado no reajuste e quanto ele representa sobre 2026. */
@@ -410,6 +415,7 @@ export function calcularOrcamento(input: OrcamentoInput): OrcamentoResultado {
     valorHidromassagem: 0,
     valorTotal: 0,
     tipoCalculo: "",
+    diasForaDoFeriado: 0,
     ehEvento: false,
     caucao: CAUCAO,
     anoReferencia: ANO_BASE,
@@ -470,21 +476,39 @@ export function calcularOrcamento(input: OrcamentoInput): OrcamentoResultado {
   // ---- Valor da hospedagem ----
   let valorBase = 0;
   let tipoCalculo = "";
+  let diasForaDoFeriado = 0;
 
   if (feriado) {
+    /*
+      O pacote de feriado cobre APENAS o bloco dele. Quem fica além disso
+      paga as noites extras pela diária comum — senão uma estadia de 6
+      noites que encosta num feriadão de 2 sairia pelo preço do feriadão,
+      e as outras 4 noites iriam de graça.
+    */
+    const diasDoBloco = diffDias(feriado.inicio, feriado.fim);
+    const diasExtras = Math.max(0, dias - diasDoBloco);
+    diasForaDoFeriado = diasExtras;
+    const valorExtras = comReajuste(diasExtras * ESTADIA_DIARIA, anoReferencia);
+    const pacoteComExtras = feriado.preco + valorExtras;
+
+    const descreveExtras =
+      diasExtras > 0
+        ? ` + ${diasExtras} diária${diasExtras > 1 ? "s" : ""} fora do feriado`
+        : "";
+
     if (ehEvento) {
       const evento = valorEvento(pessoas, dias, anoReferencia);
       // No feriado cobra-se o que for maior: o pacote ou o cálculo de evento.
-      if (evento > feriado.preco) {
+      if (evento > pacoteComExtras) {
         valorBase = evento;
         tipoCalculo = `Evento para ${pessoas} pessoas (${feriado.nome})`;
       } else {
-        valorBase = feriado.preco;
-        tipoCalculo = `Pacote ${feriado.nome}`;
+        valorBase = pacoteComExtras;
+        tipoCalculo = `Pacote ${feriado.nome}${descreveExtras}`;
       }
     } else {
-      valorBase = feriado.preco;
-      tipoCalculo = `Pacote ${feriado.nome}`;
+      valorBase = pacoteComExtras;
+      tipoCalculo = `Pacote ${feriado.nome}${descreveExtras}`;
     }
   } else if (ehEvento) {
     valorBase = valorEvento(pessoas, dias, anoReferencia);
@@ -538,6 +562,7 @@ export function calcularOrcamento(input: OrcamentoInput): OrcamentoResultado {
     valorTotal: valorBase + valorHidromassagem,
     tipoCalculo,
     feriado,
+    diasForaDoFeriado,
     ehEvento,
     caucao: CAUCAO,
     anoReferencia,

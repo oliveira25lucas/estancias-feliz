@@ -351,3 +351,56 @@ test("sobreposição de blocos cobra o pacote mais caro", () => {
   assert.ok(f);
   assert.equal(f!.nome, "Natal");
 });
+
+// ============================================================
+//  Estadia longa que engloba um feriado
+// ============================================================
+
+test("estadia longa paga o pacote MAIS as noites fora do feriado", () => {
+  // N. S. da Assunção 2026 cai no sábado 15/08; o bloco é sexta 14 a
+  // domingo 16 (2 diárias, R$ 3.600). Pedindo 12 a 18/08 são 6 diárias:
+  // 4 delas ficam fora do bloco e devem ser cobradas à parte.
+  const r = calcularOrcamento({
+    checkin: "2026-08-12",
+    checkout: "2026-08-18",
+    pessoas: 25,
+  });
+  assert.equal(r.dias, 6);
+  assert.equal(r.feriado?.nome, "N. S. da Assunção");
+  assert.equal(r.valorTotal, 3600 + 4 * 2000); // R$ 11.600
+  assert.match(r.tipoCalculo, /4 diárias fora do feriado/);
+});
+
+test("estadia que cobre exatamente o bloco não ganha diária extra", () => {
+  const r = calcularOrcamento({
+    checkin: "2026-08-14",
+    checkout: "2026-08-16",
+    pessoas: 25,
+  });
+  assert.equal(r.valorTotal, 3600);
+  assert.equal(r.tipoCalculo, "Pacote N. S. da Assunção");
+});
+
+test("uma noite a mais depois do feriadão custa uma diária a mais", () => {
+  // Independência 2026: bloco sexta 04 a segunda 07/09 (3 diárias).
+  // Saindo na terça 08, é uma diária extra.
+  const r = calcularOrcamento({
+    checkin: "2026-09-04",
+    checkout: "2026-09-08",
+    pessoas: 20,
+  });
+  assert.equal(r.dias, 4);
+  assert.equal(r.valorTotal, 4500 + 2000);
+  assert.match(r.tipoCalculo, /1 diária fora do feriado/);
+});
+
+test("as noites extras também sofrem o reajuste anual", () => {
+  // Mesmo caso do anterior, em 2027: Independência cai na terça 07/09,
+  // bloco sábado 04 a terça 07 (3 diárias), e saída na quarta 08.
+  const r = calcularOrcamento({
+    checkin: "2027-09-04",
+    checkout: "2027-09-08",
+    pessoas: 20,
+  });
+  assert.equal(r.valorTotal, comReajuste(4500, 2027) + comReajuste(2000, 2027));
+});
