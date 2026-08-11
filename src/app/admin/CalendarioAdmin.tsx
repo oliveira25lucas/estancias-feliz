@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { ChevronLeft, ChevronRight, Loader2, Lock, Trash2 } from "lucide-react";
 import type { Orcamento, Reserva } from "@/lib/supabase";
 import { bloquearPeriodo, liberarPeriodo } from "./actions";
+import { CampoData } from "@/components/CampoData";
 
 export type Bloqueio = {
   id: string;
@@ -59,6 +60,8 @@ export function CalendarioAdmin({
   const [ano, setAno] = useState(hoje.getFullYear());
   const [pendente, iniciar] = useTransition();
   const [erro, setErro] = useState("");
+  const [bloqueioInicio, setBloqueioInicio] = useState("");
+  const [bloqueioFim, setBloqueioFim] = useState("");
 
   /** Um mapa dia -> marcas evita varrer todas as listas para cada célula. */
   const marcasPorDia = useMemo(() => {
@@ -125,6 +128,8 @@ export function CalendarioAdmin({
     iniciar(async () => {
       try {
         await bloquearPeriodo(formData);
+        setBloqueioInicio("");
+        setBloqueioFim("");
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Falha ao bloquear.");
       }
@@ -233,36 +238,23 @@ export function CalendarioAdmin({
           </p>
 
           <div className="mt-4 space-y-3">
-            <div>
-              <label
-                htmlFor="data_inicio"
-                className="mb-1 block text-xs font-medium text-mata-700"
-              >
-                De
-              </label>
-              <input
-                id="data_inicio"
-                name="data_inicio"
-                type="date"
-                required
-                className="w-full rounded-lg border border-mata-200 px-3 py-2 text-sm outline-none focus:border-terra-500"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="data_fim"
-                className="mb-1 block text-xs font-medium text-mata-700"
-              >
-                Até
-              </label>
-              <input
-                id="data_fim"
-                name="data_fim"
-                type="date"
-                required
-                className="w-full rounded-lg border border-mata-200 px-3 py-2 text-sm outline-none focus:border-terra-500"
-              />
-            </div>
+            <CampoData
+              label="De"
+              name="data_inicio"
+              valor={bloqueioInicio}
+              aoMudar={setBloqueioInicio}
+              obrigatorio
+              compacto
+            />
+            <CampoData
+              label="Até"
+              name="data_fim"
+              valor={bloqueioFim}
+              aoMudar={setBloqueioFim}
+              min={bloqueioInicio || undefined}
+              obrigatorio
+              compacto
+            />
             <div>
               <label
                 htmlFor="motivo"

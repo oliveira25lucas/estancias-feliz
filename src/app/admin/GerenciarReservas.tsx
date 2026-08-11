@@ -5,6 +5,7 @@ import { CalendarPlus, Loader2, Trash2, X } from "lucide-react";
 import type { Reserva, StatusReserva } from "@/lib/supabase";
 import { formatarBRL, formatarDataBR } from "@/lib/pricing";
 import { criarReserva, excluirReserva, mudarStatusReserva } from "./actions";
+import { CampoData } from "@/components/CampoData";
 
 /**
  * O vocabulário vem do banco, que já usava PENDENTE_CONTRATO nas 23
@@ -25,6 +26,8 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
   const [abrindo, setAbrindo] = useState(false);
   const [pendente, iniciar] = useTransition();
   const [aviso, setAviso] = useState("");
+  const [entrada, setEntrada] = useState("");
+  const [saida, setSaida] = useState("");
 
   // Reservas passadas não interessam no dia a dia; o filtro deixa a
   // lista curta e focada no que ainda vai acontecer.
@@ -41,6 +44,8 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
       try {
         await acao();
         setAbrindo(false);
+        setEntrada("");
+        setSaida("");
       } catch (e) {
         setAviso(e instanceof Error ? e.message : "Falha na operação.");
       }
@@ -84,8 +89,23 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
         >
           <CampoAdmin label="Nome do cliente" nome="nome_cliente" obrigatorio />
           <CampoAdmin label="WhatsApp" nome="telefone" placeholder="31900000000" />
-          <CampoAdmin label="Entrada" nome="data_checkin" tipo="date" obrigatorio />
-          <CampoAdmin label="Saída" nome="data_checkout" tipo="date" obrigatorio />
+          <CampoData
+            label="Entrada"
+            name="data_checkin"
+            valor={entrada}
+            aoMudar={setEntrada}
+            obrigatorio
+            compacto
+          />
+          <CampoData
+            label="Saída"
+            name="data_checkout"
+            valor={saida}
+            aoMudar={setSaida}
+            min={entrada || undefined}
+            obrigatorio
+            compacto
+          />
           <CampoAdmin label="Pessoas" nome="qtd_pessoas" tipo="number" />
           <CampoAdmin label="Valor combinado" nome="valor_final" tipo="number" />
           <CampoAdmin label="Tipo de evento" nome="tipo_evento" placeholder="Aniversário, casamento..." />
