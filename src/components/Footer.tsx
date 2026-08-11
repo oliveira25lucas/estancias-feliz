@@ -102,14 +102,8 @@ export function Footer() {
           </h2>
           <ul className="mt-4 space-y-2 text-sm text-mata-200">
             <li>
-              Check-in de segunda a sexta:{" "}
-              <strong className="text-areia-100">{HORARIOS.checkinSemana}</strong>
-            </li>
-            <li>
-              Check-in sábado e domingo:{" "}
-              <strong className="text-areia-100">
-                {HORARIOS.checkinFimDeSemana}
-              </strong>
+              Check-in, todos os dias:{" "}
+              <strong className="text-areia-100">{HORARIOS.checkin}</strong>
             </li>
             <li>
               Check-out:{" "}

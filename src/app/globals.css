@@ -42,7 +42,17 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  /*
+    NÃO colocar `scroll-behavior: smooth` aqui.
+
+    O Next manda rolar para o topo ao trocar de página; com rolagem
+    suave o navegador anima esse movimento, e como o conteúdo da página
+    nova ainda está crescendo (imagens, streaming), a animação termina
+    no meio do documento. O sintoma é abrir /orcamento já rolado.
+
+    A rolagem suave das âncoras do menu é feita no Header, por JS.
+  */
+
   /* Compensa o header fixo quando se navega por âncora. */
   scroll-padding-top: 5rem;
 }
@@ -55,9 +65,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
   *,
   *::before,
   *::after {

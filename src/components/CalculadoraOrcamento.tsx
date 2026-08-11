@@ -19,6 +19,7 @@ import {
   comReajuste,
   formatarBRL,
   formatarDataBR,
+  nomeDiaSemana,
   tabelaDePrecos,
 } from "@/lib/pricing";
 import { CAPACIDADE, linkWhatsApp } from "@/lib/site-config";
@@ -39,6 +40,18 @@ function mascararTelefone(valor: string): string {
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+/**
+ * O <input type="date"> exibe no formato do NAVEGADOR — num navegador em
+ * inglês aparece mm/dd/yyyy, e 03/05 vira uma ambiguidade cara numa
+ * reserva. Esta linha embaixo do campo mostra a data por extenso, o que
+ * resolve em qualquer idioma. De quebra mostra o dia da semana, que é o
+ * que define o preço.
+ */
+function dataPorExtenso(iso: string): string | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return undefined;
+  return `${nomeDiaSemana(iso)}, ${formatarDataBR(iso)}`;
 }
 
 function hojeISO(): string {
@@ -251,7 +264,11 @@ export function CalculadoraOrcamento() {
             </legend>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <Campo label="Entrada" htmlFor="checkin">
+              <Campo
+                label="Entrada"
+                htmlFor="checkin"
+                dica={dataPorExtenso(checkin)}
+              >
                 <input
                   id="checkin"
                   type="date"
@@ -262,7 +279,11 @@ export function CalculadoraOrcamento() {
                   className={estiloInput}
                 />
               </Campo>
-              <Campo label="Saída" htmlFor="checkout">
+              <Campo
+                label="Saída"
+                htmlFor="checkout"
+                dica={dataPorExtenso(checkout)}
+              >
                 <input
                   id="checkout"
                   type="date"

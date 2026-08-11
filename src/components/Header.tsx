@@ -27,6 +27,27 @@ export function Header() {
    */
   const precisaDeFundo = caminho !== "/" || rolou || aberto;
 
+  /**
+   * Rolagem suave das âncoras feita aqui, e não com
+   * `scroll-behavior: smooth` no CSS: aplicada globalmente, ela
+   * atrapalhava o Next ao trocar de página e a página nova abria no meio.
+   * Estando já na home, rolamos à mão; vindo de outra página, deixamos o
+   * Next navegar e o navegador cuidar da âncora.
+   */
+  function aoClicarAncora(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (caminho !== "/") return;
+
+    const id = href.split("#")[1];
+    const destino = id ? document.getElementById(id) : null;
+    if (!destino) return;
+
+    e.preventDefault();
+    setAberto(false);
+    destino.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Mantém a URL com a âncora, para poder compartilhar o link da seção.
+    history.replaceState(null, "", href);
+  }
+
   useEffect(() => {
     const aoRolar = () => setRolou(window.scrollY > 24);
     aoRolar();
@@ -76,6 +97,7 @@ export function Header() {
             <Link
               key={l.href}
               href={l.href}
+              onClick={(e) => aoClicarAncora(e, l.href)}
               className="text-sm font-medium text-areia-100/90 transition hover:text-white"
             >
               {l.label}
@@ -120,7 +142,10 @@ export function Header() {
               <Link
                 key={l.href}
                 href={l.href}
-                onClick={() => setAberto(false)}
+                onClick={(e) => {
+                  setAberto(false);
+                  aoClicarAncora(e, l.href);
+                }}
                 className="border-b border-mata-800 py-3.5 text-base font-medium text-areia-100 last:border-0"
               >
                 {l.label}

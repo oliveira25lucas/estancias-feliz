@@ -96,7 +96,7 @@ export default function PaginaInicial() {
             <p className="surgir mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-areia-100 sm:text-xl">
               Piscina com cascata, salão de festas coberto, churrasqueira e
               espaço de sobra para a família toda. A 30 km de Belo Horizonte,
-              com Wi-Fi Starlink.
+              com Wi-Fi.
             </p>
 
             <div className="surgir mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -192,7 +192,7 @@ export default function PaginaInicial() {
               <div className="flex items-center gap-3 rounded-2xl bg-mata-700 p-5 text-areia-50">
                 <Waves className="size-6 shrink-0" aria-hidden />
                 <p className="text-sm font-medium leading-snug">
-                  Piscina com cascata, das 9h às 12h e das 14h às 17h
+                  Piscina com cascata e área verde de sobra
                 </p>
               </div>
               <div className="flex items-center gap-3 rounded-2xl bg-mata-700 p-5 text-areia-50">
@@ -380,8 +380,7 @@ export default function PaginaInicial() {
                   Horários fixos
                 </h3>
                 <p className="mt-3 leading-relaxed text-areia-100">
-                  Check-in de segunda a sexta às {HORARIOS.checkinSemana}, aos
-                  sábados e domingos às {HORARIOS.checkinFimDeSemana}. Check-out
+                  Check-in às {HORARIOS.checkin}, todos os dias. Check-out
                   sempre às {HORARIOS.checkout}.
                 </p>
               </div>

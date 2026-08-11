@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     siteName: "Sítio Estâncias Feliz",
     title: "Sítio Estâncias Feliz — Seu evento com piscina, salão e churrasqueira",
     description:
-      "25 pessoas para dormir e 200 para eventos. Piscina com cascata, salão de festas coberto e Wi-Fi Starlink. A 30 km de BH, na MG-040.",
+      "25 pessoas para dormir e 200 para eventos. Piscina com cascata, salão de festas coberto e churrasqueira. A 30 km de BH, na MG-040.",
     images: [
       {
         url: "/og.jpg",

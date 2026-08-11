@@ -51,8 +51,8 @@ export const ENDERECO_COMPLETO =
   `${LOCALIZACAO.cidade} - ${LOCALIZACAO.estado}, ${LOCALIZACAO.cep}`;
 
 export const HORARIOS = {
-  checkinSemana: "6h",
-  checkinFimDeSemana: "10h",
+  /** Um horário só, todos os dias — antes era 6h na semana e 10h no fim de semana. */
+  checkin: "8h",
   checkout: "16h",
   observacao: "Horários fixos, não há flexibilização.",
 } as const;
@@ -97,9 +97,9 @@ export const ESTRUTURA = [
     icone: "waves" as const,
     itens: [
       "Piscina com profundidade de 1,40m a 1,90m",
-      "Cascata funcionando das 9h às 12h e das 14h às 17h",
+      "Cascata na piscina",
       "Hidromassagem disponível (opcional, por diária)",
-      "Quadra de vôlei e peteca",
+      "Quadra que serve para vôlei e para peteca",
     ],
   },
   {
@@ -169,12 +169,12 @@ export const FAQ = [
   {
     pergunta: "Qual o horário de check-in e check-out?",
     resposta:
-      "Check-in de segunda a sexta às 6h, e aos sábados e domingos às 10h. O check-out é sempre às 16h. Esses horários são fixos.",
+      "O check-in é às 8h, todos os dias, e o check-out é sempre às 16h. Esses horários são fixos.",
   },
   {
     pergunta: "A piscina é aquecida?",
     resposta:
-      "Não, a piscina não é aquecida. Ela tem de 1,40m a 1,90m de profundidade, e a cascata funciona das 9h às 12h e das 14h às 17h.",
+      "Não, a piscina não é aquecida. Ela tem de 1,40m a 1,90m de profundidade e conta com cascata.",
   },
   {
     pergunta: "Como funciona o pagamento?",
