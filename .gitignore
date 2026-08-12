@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# O .env.example é a documentação das variáveis e não tem segredo nenhum:
+# só nomes, comentários e valores vazios. Sem esta linha o `.env*` acima
+# engolia ele, e o `cp .env.example .env.local` do README não funcionava
+# em clone novo — o arquivo não existia no repositório.
+!.env.example
 
 # vercel
 .vercel

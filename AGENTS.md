@@ -8,29 +8,58 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# Publicar não é dar push
+# Commit, push e deploy — o ciclo completo
 
-A conexão GitHub → Vercel deste projeto está **desligada**. `git push`
-versiona e **não publica nada**. Quem publica é a CLI, de dentro desta pasta:
+`git push` **não publica nada**: a conexão GitHub → Vercel está desligada.
+Quem publica é a CLI da Vercel, e ela empacota o **diretório de trabalho**,
+não um commit. São dois passos separados e os dois precisam acontecer.
+
+Na ordem, sem pular:
 
 ```bash
-npx vercel deploy          # preview, numa URL própria, sem tocar no domínio
-npx vercel deploy --prod   # publica em estanciasfeliz.com.br
-npx vercel rollback        # volta para o deploy anterior
+# 1. verificar — os quatro precisam passar
+npm test && npx tsc --noEmit && npm run lint && npm run build
+
+# 2. commitar — explícito, e leia o que está indo
+git status --short
+git add <caminhos>                    # evite `git add -A`
+git diff --cached | grep -iE '^\+.*(sb_secret|service_role|eyJhbGciOi|apikey *[:=])' || echo limpo
+git commit                            # assunto em português, corpo com o POR QUÊ, Co-Authored-By no fim
+
+# 3. enviar ao GitHub (só versiona — origin/site-inicial)
+git push
+
+# 4. preview, sem tocar no domínio
+npx vercel deploy --yes
+
+# 5. verificar o preview (tem Deployment Protection: curl comum leva 302)
+npx vercel curl "/api/cron/lembretes?previa=1" --deployment <url> \
+  -- --silent --header "Authorization: Bearer $CRON_SECRET"
+npx vercel env ls                     # nome e ambiente; segredo faltando em Production só quebra depois
+
+# 6. publicar
+npx vercel deploy --prod --yes
+
+# 7. verificar produção (aqui curl comum funciona)
+curl -s -o /dev/null -w "%{http_code}\n" https://www.estanciasfeliz.com.br/        # 200
+curl -s -o /dev/null -w "%{http_code}\n" https://www.estanciasfeliz.com.br/admin   # 307
+npx vercel crons ls                                                               # 0 11 * * *
+
+# 8. se deu ruim
+npx vercel rollback
 ```
 
-O deploy sai do **diretório de trabalho**, não de um commit — o que está
-sem commitar vai para o ar junto.
+Armadilhas que já custaram tempo:
 
-Duas armadilhas que já custaram tempo:
+- **Cron só é registrado em deploy com target production.** "Promote to
+  Production" no painel publica o site novo e deixa o cron para trás, sem
+  erro na tela. Use `deploy --prod`.
+- **`.vercelignore` manda no upload no lugar do `.gitignore`**, e `fotos/`
+  sem barra inicial casa em qualquer nível e leva junto `public/fotos/` — o
+  site sobe sem nenhuma imagem (commit `5f67fd7`).
+- A CLI não está instalada: `npx vercel`. A conta já está autenticada.
 
-- **Cron só é registrado em deploy com target production.** Promover um
-  preview pelo painel publica o site novo e deixa o cron para trás. Confira
-  com `npx vercel crons ls`.
-- **Preview tem Deployment Protection**: curl comum leva 302. Para furar,
-  `npx vercel curl "<path>" --deployment <url> -- --header "..."`.
-
-O passo a passo completo, com as verificações, está em "Publicação" no
+O detalhamento está em "Publicar: verificar, commitar, enviar, subir" no
 README.
 
 # Avisos automáticos de WhatsApp

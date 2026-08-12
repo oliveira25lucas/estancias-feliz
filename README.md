@@ -270,36 +270,128 @@ node scripts/listar-grupos.mjs   # descobre o JID do grupo do WhatsApp
 
 ---
 
-## Publicação
+## Publicar: verificar, commitar, enviar, subir
 
-O deploy é na Vercel (projeto `estancias-feliz`), **pela CLI, direto desta
-pasta**. A conexão GitHub → Vercel foi desligada, então `git push`
-versiona mas **não publica nada**:
+**Duas coisas separadas, que já foram confundidas:** `git push` guarda o
+código no GitHub e **não publica nada**; quem publica é a CLI da Vercel,
+que empacota o **diretório de trabalho** (não um commit). Se você fizer só
+o push, o site continua o mesmo. Se fizer só o deploy, o site sai na frente
+do repositório — e foi o que já aconteceu aqui.
 
-```bash
-npx vercel deploy          # preview, numa URL própria, sem tocar no domínio
-npx vercel deploy --prod   # publica em estanciasfeliz.com.br
-npx vercel rollback        # volta para o deploy anterior
-```
+Faça na ordem. Nada abaixo é opcional.
 
-Vale conferir num preview antes de ir ao ar. O preview tem *Deployment
-Protection*, então curl comum leva 302 — para furar a proteção:
+### 1. Verificar
 
 ```bash
-npx vercel curl "/api/cron/lembretes?previa=1" --deployment <url-do-preview> \
-  -- --header "Authorization: Bearer $CRON_SECRET"
+npm test            # preços, ocupação e o texto dos avisos de WhatsApp
+npx tsc --noEmit    # tipos
+npm run lint        # eslint
+npm run build       # o build de produção pega o que o dev deixa passar
 ```
 
-Comandos que valem saber:
+Os quatro precisam passar antes de qualquer commit. O `build` é o que
+mais salva: erro de tipo em route handler só aparece nele.
+
+### 2. Commitar
 
 ```bash
-npx vercel env ls      # quais variáveis existem, e em qual ambiente
-npx vercel crons ls    # confirma que o lembrete de 7 dias está registrado
+git status --short                    # o que exatamente vai entrar
+git add <caminhos>                    # explícito; evite `git add -A`
+git diff --cached                     # leia o que está indo
+git commit
 ```
 
-O **cron só nasce em deploy com target production**. Por isso publique com
-`deploy --prod` em vez de promover um preview pelo painel — promover não
-registra o cron.
+Antes de commitar, confira que nenhum segredo entrou:
+
+```bash
+git diff --cached | grep -iE '^\+.*(sb_secret|service_role|eyJhbGciOi|apikey *[:=])' \
+  || echo "limpo"
+```
+
+Estilo das mensagens deste repo: assunto curto em português, no presente
+(*"Cobra as diárias que passam do bloco do feriado"*), corpo explicando o
+**por quê** e não o quê, e `Co-Authored-By:` no fim quando teve IA no meio.
+
+### 3. Enviar para o GitHub
+
+```bash
+git push
+```
+
+Só versionamento. `origin` é `github.com/oliveira25lucas/estancias-feliz`,
+branch `site-inicial`. **Não dispara deploy.**
+
+### 4. Preview
+
+```bash
+npx vercel deploy --yes
+```
+
+Devolve uma URL `*-estancias-feliz.vercel.app` que **não** toca no domínio.
+Sempre passe por aqui.
+
+### 5. Verificar o preview
+
+O preview tem *Deployment Protection*: curl comum leva `302 Redirecting`.
+Para furar, use o `vercel curl` — as flags do curl vão depois do `--`:
+
+```bash
+npx vercel curl "/api/cron/lembretes?previa=1" \
+  --deployment <url-do-preview> \
+  -- --silent --header "Authorization: Bearer $CRON_SECRET"
+```
+
+Confira também as variáveis, que é onde falha silenciosamente:
+
+```bash
+npx vercel env ls   # nome e ambiente (Preview/Production); nunca o valor
+```
+
+Segredo que existe em Preview e falta em Production só quebra depois do
+`--prod`, e só em runtime.
+
+### 6. Publicar
+
+```bash
+npx vercel deploy --prod --yes
+```
+
+Use **isto**, não "Promote to Production" no painel: o **cron só é
+registrado em deploy com target production**. Promover um preview publica o
+site novo e deixa o cron para trás, sem erro nenhum na tela.
+
+### 7. Verificar produção
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://www.estanciasfeliz.com.br/        # 200
+curl -s -o /dev/null -w "%{http_code}\n" https://www.estanciasfeliz.com.br/admin   # 307
+npx vercel crons ls                                                               # /api/cron/lembretes  0 11 * * *
+```
+
+O domínio de produção **não** tem Deployment Protection — aqui curl comum
+funciona.
+
+### 8. Se deu ruim
+
+```bash
+npx vercel rollback
+```
+
+Ou no painel: *Deployments → o anterior → Promote to Production*.
+
+### Armadilhas
+
+- **`.vercelignore` manda no upload no lugar do `.gitignore`.** Ele existe
+  para barrar os 237 MB de `/fotos/`. A barra inicial é obrigatória:
+  `fotos/` sem barra casa em qualquer nível e leva junto `public/fotos/` —
+  o site sobe sem imagem nenhuma. Já aconteceu (commit `5f67fd7`).
+- **O deploy sobe o diretório de trabalho.** Arquivo sem commitar vai ao ar
+  junto; arquivo commitado mas apagado do disco não vai.
+- **`vercel link` acrescenta um `VERCEL_OIDC_TOKEN` ao `.env.local`.** É da
+  CLI, expira sozinho, e o arquivo é gitignored.
+- A CLI da Vercel não está instalada no projeto — `npx vercel` baixa na
+  hora. A conta já está autenticada; `vercel login` é interativo e não faz
+  falta.
 
 > Os subdomínios `n8n` e `api` apontam para `91.99.198.110` (o VPS).
 > Se algum dia precisar mexer no DNS, mexa apenas na raiz e no `www` — não
