@@ -1,0 +1,23 @@
+# O que NAO sobe para a Vercel a cada deploy.
+#
+# Quando existe um .vercelignore, ele passa a mandar no upload no lugar do
+# .gitignore — por isso as linhas de segredo e de build estao repetidas aqui.
+# Tirar qualquer uma delas faz o arquivo correspondente ir para o servidor.
+
+# Originais das fotos em alta: 237 MB que o site nao usa. As versoes web
+# ficam em public/fotos/ e essas sim precisam subir.
+fotos/
+
+# Segredos — nunca sobem no pacote. As variaveis de producao vivem no
+# painel da Vercel (vercel env ls).
+.env
+.env.*
+
+# Build e dependencias: a Vercel gera tudo isso do zero no servidor.
+node_modules
+.next
+.vercel
+
+# Lixo de sistema e de trabalho
+.DS_Store
+*.tsbuildinfo

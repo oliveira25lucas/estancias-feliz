@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# originais das fotos em alta (238 MB) — as versoes web ficam em public/fotos/
-/fotos/
+# Os originais das fotos em alta ficam versionados em /fotos/ (237 MB).
+# Eles NAO vao para a Vercel: quem barra o upload e o .vercelignore, senao
+# cada deploy subiria 237 MB a toa. O site so usa /public/fotos/.
