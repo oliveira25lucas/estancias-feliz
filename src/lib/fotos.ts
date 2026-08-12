@@ -174,6 +174,12 @@ export type Foto = {
   espaco: NomeEspaco;
   /** Fotos marcadas como destaque ocupam o dobro de espaço na grade. */
   destaque?: boolean;
+  /**
+   * Entra na amostra da página inicial. São poucas de propósito: a home
+   * mostra o sítio pelo melhor ângulo e manda para /fotos quem quiser ver
+   * tudo. Antes a home despejava as 57 e ficava pesada de percorrer.
+   */
+  capa?: boolean;
 };
 
 export const FOTOS: Foto[] = [
@@ -183,6 +189,7 @@ export const FOTOS: Foto[] = [
     alt: "Piscina de azulejo azul com piso de pedra em volta, espreguiçadeiras e os quiosques de tijolo ao fundo",
     espaco: "Piscina",
     destaque: true,
+    capa: true,
   },
   {
     src: "/fotos/piscina-comprimento.jpg",
@@ -193,6 +200,7 @@ export const FOTOS: Foto[] = [
     src: "/fotos/piscina-cascata-01.jpg",
     alt: "Cascata de aço despejando água na piscina em dia de céu azul",
     espaco: "Piscina",
+    capa: true,
   },
   {
     src: "/fotos/piscina-espreguicadeiras.jpg",
@@ -226,11 +234,13 @@ export const FOTOS: Foto[] = [
     alt: "Churrasqueira coberta com arcos de tijolo e mesão de madeira maciça com bancos",
     espaco: "Churrasqueira",
     destaque: true,
+    capa: true,
   },
   {
     src: "/fotos/gourmet-quiosque-arcos.jpg",
     alt: "Quiosque de arcos de tijolo no fim da tarde, com o jardim e a piscina ao redor",
     espaco: "Churrasqueira",
+    capa: true,
   },
   {
     src: "/fotos/gourmet-churrasqueira-fogao.jpg",
@@ -278,6 +288,7 @@ export const FOTOS: Foto[] = [
     alt: "Salão de festas coberto, com mesas, cadeiras e lustres de ferro no telhado de telha",
     espaco: "Salão de festas",
     destaque: true,
+    capa: true,
   },
   {
     src: "/fotos/salao-luz-natural.jpg",
@@ -301,6 +312,7 @@ export const FOTOS: Foto[] = [
     alt: "Fachada da casa principal, com jardim bem cuidado e caminho de pedra na frente",
     espaco: "A casa por fora",
     destaque: true,
+    capa: true,
   },
   {
     src: "/fotos/casa-madeira-vidro.jpg",
@@ -329,6 +341,7 @@ export const FOTOS: Foto[] = [
     src: "/fotos/jardim-alameda.jpg",
     alt: "Alameda de árvores altas com caminho de pedra cortando o gramado",
     espaco: "Jardim",
+    capa: true,
   },
   {
     src: "/fotos/jardim-balanco.jpg",
@@ -356,6 +369,7 @@ export const FOTOS: Foto[] = [
     src: "/fotos/quadra-vista-geral.jpg",
     alt: "Quadra vista de longe, cercada pelo verde, em dia de céu azul",
     espaco: "Quadra",
+    capa: true,
   },
 
   // ---------------- Sala de estar do 1º andar ----------------
@@ -376,6 +390,7 @@ export const FOTOS: Foto[] = [
     alt: "Sala de estar do segundo andar, com sofás e teto de madeira em forma de arco",
     espaco: "Sala de estar do 2º andar",
     destaque: true,
+    capa: true,
   },
   {
     src: "/fotos/sala-estar-2-mezanino.jpg",
@@ -500,6 +515,14 @@ export const FOTOS: Foto[] = [
     espaco: "Vestiários",
   },
 ];
+
+/**
+ * A amostra da página inicial, na ordem do catálogo — que já é o roteiro da
+ * visita: piscina, espaço gourmet, salão, casa, jardim, quadra e interior.
+ */
+export function fotosDaCapa(): Foto[] {
+  return FOTOS.filter((f) => f.capa);
+}
 
 /** Fotos de um espaço, na ordem em que foram cadastradas. */
 export function fotosDoEspaco(espaco: NomeEspaco): Foto[] {

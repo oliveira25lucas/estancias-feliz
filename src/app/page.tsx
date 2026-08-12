@@ -16,7 +16,7 @@ import {
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { BotaoWhatsApp } from "@/components/BotaoWhatsApp";
-import { Galeria } from "@/components/Galeria";
+import { GaleriaCapa } from "@/components/GaleriaCapa";
 import {
   CAPACIDADE,
   ENDERECO_COMPLETO,
@@ -209,16 +209,15 @@ export default function PaginaInicial() {
           <div className="container-sitio">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="font-display text-3xl font-semibold text-mata-900 sm:text-4xl">
-                Conheça cada canto
+                Um gostinho do lugar
               </h2>
               <p className="mt-4 text-lg leading-relaxed text-mata-700">
-                As fotos estão separadas espaço por espaço — da piscina ao
-                último quarto — para você saber exatamente o que vai encontrar.
-                Clique em qualquer uma para ver em tamanho grande.
+                Estas são algumas das nossas favoritas. Clique para ver em
+                tamanho grande.
               </p>
             </div>
             <div className="mt-12">
-              <Galeria />
+              <GaleriaCapa />
             </div>
           </div>
         </section>

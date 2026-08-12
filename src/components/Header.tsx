@@ -9,7 +9,8 @@ import { linkWhatsApp } from "@/lib/site-config";
 
 const LINKS = [
   { href: "/#estrutura", label: "Estrutura" },
-  { href: "/#fotos", label: "Fotos" },
+  // Página própria, não âncora: é lá que estão todas as fotos.
+  { href: "/fotos", label: "Fotos" },
   { href: "/#precos", label: "Preços" },
   { href: "/#localizacao", label: "Como chegar" },
   { href: "/#duvidas", label: "Dúvidas" },
