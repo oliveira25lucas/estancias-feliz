@@ -5,8 +5,12 @@
 # Tirar qualquer uma delas faz o arquivo correspondente ir para o servidor.
 
 # Originais das fotos em alta: 237 MB que o site nao usa. As versoes web
-# ficam em public/fotos/ e essas sim precisam subir.
-fotos/
+# ficam em public/fotos/ e essas SIM precisam subir.
+#
+# A barra inicial e obrigatoria. Sem ela ("fotos/"), o padrao casa em
+# qualquer nivel e leva junto public/fotos/ — o site sobe sem nenhuma
+# foto, com o placeholder no lugar de cada uma. Ja aconteceu.
+/fotos/
 
 # Segredos — nunca sobem no pacote. As variaveis de producao vivem no
 # painel da Vercel (vercel env ls).
