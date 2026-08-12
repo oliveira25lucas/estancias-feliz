@@ -9,7 +9,11 @@ import {
   estaAutenticado,
   senhaCorreta,
 } from "@/lib/auth";
-import { getSupabase, type StatusReserva } from "@/lib/supabase";
+import {
+  getSupabase,
+  type StatusOrcamento,
+  type StatusReserva,
+} from "@/lib/supabase";
 import {
   avisarCancelamento,
   avisarNovoAluguel,
@@ -71,18 +75,66 @@ export async function sair(): Promise<void> {
   redirect("/admin/login");
 }
 
+// ============================================================
+//  CRM de leads
+//
+//  A calculadora do site grava o lead ANTES de mostrar o valor, então
+//  esta lista é a porta de entrada de quase todo cliente. O que ela
+//  precisa saber, além do pedido: o que já foi conversado, e quando foi
+//  a última vez que alguém falou com a pessoa.
+// ============================================================
+
 export async function atualizarStatus(
   id: string,
-  status: "novo" | "em_contato" | "fechado" | "perdido",
+  status: StatusOrcamento,
 ): Promise<void> {
+  await exigirLogin();
+
+  const campos: Record<string, unknown> = { status };
+
+  // Marcar "em contato" é dizer que a conversa aconteceu — a data do
+  // último contato vem junto, senão a fila de retorno fica cega. Já
+  // "perdido" não marca nada: boa parte é gente que nunca respondeu.
+  if (status === "em_contato") {
+    campos.contatado_em = new Date().toISOString();
+  }
+
+  const { error } = await getSupabase()
+    .from("orcamentos")
+    .update(campos)
+    .eq("id", id);
+
+  if (error) throw new Error(`Não foi possível atualizar: ${error.message}`);
+  revalidatePath("/admin");
+}
+
+/** "Falei com essa pessoa hoje" — sem mexer na etapa do funil. */
+export async function registrarContato(id: string): Promise<void> {
   await exigirLogin();
 
   const { error } = await getSupabase()
     .from("orcamentos")
-    .update({ status })
+    .update({ contatado_em: new Date().toISOString() })
     .eq("id", id);
 
-  if (error) throw new Error(`Não foi possível atualizar: ${error.message}`);
+  if (error) throw new Error(`Não foi possível registrar: ${error.message}`);
+  revalidatePath("/admin");
+}
+
+export async function salvarAnotacao(
+  id: string,
+  texto: string,
+): Promise<void> {
+  await exigirLogin();
+
+  const anotacoes = texto.trim().slice(0, 4000);
+
+  const { error } = await getSupabase()
+    .from("orcamentos")
+    .update({ anotacoes: anotacoes || null })
+    .eq("id", id);
+
+  if (error) throw new Error(`Não foi possível salvar: ${error.message}`);
   revalidatePath("/admin");
 }
 

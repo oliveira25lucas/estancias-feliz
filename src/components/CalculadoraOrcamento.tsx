@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CalendarCheck,
@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   Lightbulb,
   Loader2,
+  Lock,
+  MessageCircle,
   Users,
   XCircle,
 } from "lucide-react";
@@ -19,10 +21,36 @@ import {
   comReajuste,
   formatarBRL,
   formatarDataBR,
+  nomeDiaSemana,
   tabelaDePrecos,
 } from "@/lib/pricing";
 import { CAPACIDADE, linkWhatsApp } from "@/lib/site-config";
-import { CampoData } from "./CampoData";
+import {
+  alternativasProximas,
+  fimDaJanela,
+  hojeISO,
+  somaDiasISO,
+} from "@/lib/ocupacao";
+import { CalendarioDisponibilidade } from "./CalendarioDisponibilidade";
+
+/**
+ * Calculadora de orçamento.
+ *
+ * Duas regras moldam esta tela:
+ *
+ * 1. DATA OCUPADA JÁ NASCE BLOQUEADA. O calendário recebe a agenda antes
+ *    de a pessoa clicar, então o que está vendido não é selecionável — nem
+ *    como entrada, nem como saída. Antes ela escolhia, esperava a consulta
+ *    e só então descobria que não dava.
+ *
+ * 2. O VALOR SÓ APARECE DEPOIS DO CONTATO. Nome e WhatsApp são gravados
+ *    primeiro; o orçamento aparece em seguida. Quem chega até aqui vira
+ *    lead mesmo que nunca clique no WhatsApp — e é isso que enche a aba de
+ *    CRM do painel.
+ *
+ * Nada disso confia no navegador: `/api/orcamento` recalcula o preço e
+ * reconfere a agenda no servidor.
+ */
 
 const OCASIOES = [
   "Confraternização em família",
@@ -42,21 +70,10 @@ function mascararTelefone(valor: string): string {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
-function hojeISO(): string {
-  const d = new Date();
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const dia = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
-
 type Modo = "indefinido" | "com-data" | "sem-data";
-type Estado = "parado" | "enviando" | "enviado" | "erro";
-type Agenda =
-  | { situacao: "ocioso" }
-  | { situacao: "checando" }
-  | { situacao: "livre" }
-  | { situacao: "ocupado" }
-  | { situacao: "desconhecido" };
+type Estado = "parado" | "enviando" | "erro";
+type Situacao = "ocioso" | "checando" | "livre" | "ocupado" | "desconhecido";
+type Janela = { ocupados: string[]; de: string; ate: string };
 
 export function CalculadoraOrcamento() {
   const [modo, setModo] = useState<Modo>("indefinido");
@@ -75,11 +92,23 @@ export function CalculadoraOrcamento() {
 
   const [estado, setEstado] = useState<Estado>("parado");
   const [mensagemErro, setMensagemErro] = useState("");
-  /** Última resposta da agenda, marcada com o período que originou a consulta. */
+
+  /** A agenda inteira, para o calendário abrir já sabendo o que não dá. */
+  const [janela, setJanela] = useState<Janela | null>(null);
+  /** Data indisponível em que a pessoa insistiu — rende as alternativas. */
+  const [diaRecusado, setDiaRecusado] = useState("");
+
+  /** Última resposta da agenda, marcada com o período que a originou. */
   const [consulta, setConsulta] = useState<{
     chave: string;
     livre: boolean | null;
   } | null>(null);
+
+  /** Preenchidos quando o lead é gravado — é o que destrava o valor. */
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [desbloqueado, setDesbloqueado] = useState(false);
+  /** Assinatura do que já foi salvo, para não reenviar o que não mudou. */
+  const jaSalvo = useRef("");
 
   const orcamento = useMemo(
     () =>
@@ -92,6 +121,46 @@ export function CalculadoraOrcamento() {
     [checkin, checkout, pessoas, hidromassagem],
   );
 
+  // ---- Agenda: uma vez só, quando o caminho com data começa ----
+  useEffect(() => {
+    if (modo !== "com-data" || janela) return;
+
+    let cancelado = false;
+
+    (async () => {
+      // Sem banco, o calendário abre sem bloqueio nenhum: melhor deixar
+      // escolher e conferir no envio do que travar o site inteiro.
+      const inicio = hojeISO();
+      const semAgenda: Janela = {
+        ocupados: [],
+        de: inicio,
+        ate: fimDaJanela(inicio),
+      };
+
+      try {
+        const r = await fetch("/api/agenda");
+        const dados = await r.json();
+        if (cancelado) return;
+        setJanela(
+          dados.conhecido
+            ? { ocupados: dados.dias ?? [], de: dados.de, ate: dados.ate }
+            : semAgenda,
+        );
+      } catch {
+        if (!cancelado) setJanela(semAgenda);
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [modo, janela]);
+
+  const ocupados = useMemo(
+    () => new Set(janela?.ocupados ?? []),
+    [janela],
+  );
+
   // Identifica o período consultado. Enquanto a resposta guardada não for
   // deste período, ainda estamos esperando.
   const chavePeriodo = orcamento.valido
@@ -100,23 +169,29 @@ export function CalculadoraOrcamento() {
 
   // O estado exibido é derivado, não guardado: evita renderização em
   // cascata e nunca fica preso num "checando" antigo.
-  const agenda: Agenda =
+  const situacao: Situacao =
     modo !== "com-data" || !orcamento.valido
-      ? { situacao: "ocioso" }
+      ? "ocioso"
       : consulta?.chave !== chavePeriodo
-        ? { situacao: "checando" }
+        ? "checando"
         : consulta.livre === null
-          ? { situacao: "desconhecido" }
-          : { situacao: consulta.livre ? "livre" : "ocupado" };
+          ? "desconhecido"
+          : consulta.livre
+            ? "livre"
+            : "ocupado";
 
-  // ---- Consulta a agenda quando as datas mudam ----
+  /*
+    O calendário já barra data vendida. Esta consulta continua existindo
+    por causa do feriado: quem pede sábado a domingo num feriadão leva o
+    bloco inteiro, de sexta a segunda, e o pedaço que ele acrescenta pode
+    estar ocupado sem que a pessoa tenha clicado nele.
+  */
   useEffect(() => {
     if (modo !== "com-data" || !chavePeriodo) return;
 
     let cancelado = false;
     const [inicio, fim] = chavePeriodo.split("|");
 
-    // Espera a pessoa parar de mexer antes de consultar.
     const timer = setTimeout(async () => {
       try {
         const r = await fetch(
@@ -131,7 +206,7 @@ export function CalculadoraOrcamento() {
       } catch {
         if (!cancelado) setConsulta({ chave: chavePeriodo, livre: null });
       }
-    }, 500);
+    }, 400);
 
     return () => {
       cancelado = true;
@@ -139,12 +214,99 @@ export function CalculadoraOrcamento() {
     };
   }, [modo, chavePeriodo]);
 
+  // ---- Datas livres para oferecer quando a pedida não dá ----
+  const alternativas = useMemo(() => {
+    if (!janela) return [];
+
+    const base = diaRecusado
+      ? { entrada: diaRecusado, saida: somaDiasISO(diaRecusado, 2) }
+      : situacao === "ocupado" && orcamento.valido
+        ? { entrada: orcamento.checkin, saida: orcamento.checkout }
+        : null;
+
+    if (!base) return [];
+
+    return alternativasProximas(base.entrada, base.saida, ocupados, {
+      minimo: janela.de,
+      quantidade: 3,
+    });
+  }, [
+    janela,
+    ocupados,
+    diaRecusado,
+    situacao,
+    orcamento.valido,
+    orcamento.checkin,
+    orcamento.checkout,
+  ]);
+
   const contatoOk =
     nome.trim().length >= 3 && telefone.replace(/\D/g, "").length >= 10;
-  const podeEnviar =
-    contatoOk &&
-    estado !== "enviando" &&
-    (modo === "sem-data" ? Number(pessoas) > 0 : orcamento.valido);
+  const dadosOk = modo === "sem-data" ? Number(pessoas) > 0 : orcamento.valido;
+  const podeAvancar =
+    contatoOk && dadosOk && situacao !== "ocupado" && estado !== "enviando";
+
+  /** O que vai para o servidor. Mesma forma no POST e no PATCH. */
+  const corpo = useMemo(
+    () => ({
+      temData: modo === "com-data",
+      nome,
+      telefone,
+      email,
+      ocasiao,
+      observacoes,
+      pessoas: Number(pessoas) || 1,
+      hidromassagem,
+      ...(modo === "com-data"
+        ? { checkin: orcamento.checkin, checkout: orcamento.checkout }
+        : { periodoDesejado }),
+    }),
+    [
+      modo,
+      nome,
+      telefone,
+      email,
+      ocasiao,
+      observacoes,
+      pessoas,
+      hidromassagem,
+      orcamento.checkin,
+      orcamento.checkout,
+      periodoDesejado,
+    ],
+  );
+
+  /*
+    Depois de destravado, mexer nas datas atualiza o MESMO lead. Sem isto
+    o painel receberia um registro novo a cada ajuste, e a equipe ligaria
+    cobrando a data errada — a primeira que a pessoa tentou.
+  */
+  useEffect(() => {
+    if (!desbloqueado || !leadId || !dadosOk) return;
+
+    const assinatura = JSON.stringify(corpo);
+    if (assinatura === jaSalvo.current) return;
+
+    const timer = setTimeout(() => {
+      jaSalvo.current = assinatura;
+      fetch("/api/orcamento", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: leadId, ...corpo }),
+      }).catch(() => {
+        // O lead já está salvo na versão anterior. Não vale incomodar
+        // quem está preenchendo com um erro que não é dele.
+      });
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [desbloqueado, leadId, dadosOk, corpo]);
+
+  function escolherPeriodo(entrada: string, saida: string) {
+    setCheckin(entrada);
+    setCheckout(saida);
+    setDiaRecusado("");
+  }
 
   function montarMensagem(): string {
     const linhas = [`Olá! Fiz um orçamento no site do Sítio Estâncias Feliz:`, ``];
@@ -180,47 +342,61 @@ export function CalculadoraOrcamento() {
     return linhas.join("\n");
   }
 
-  async function aoEnviar(e: React.FormEvent) {
-    e.preventDefault();
-    if (!podeEnviar) return;
-
+  /** Grava o lead e destrava o valor. */
+  async function registrarLead() {
     setEstado("enviando");
     setMensagemErro("");
-    const mensagem = montarMensagem();
 
     try {
       const resposta = await fetch("/api/orcamento", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          temData: modo === "com-data",
-          nome,
-          telefone,
-          email,
-          ocasiao,
-          observacoes,
-          pessoas: Number(pessoas) || 1,
-          hidromassagem,
-          ...(modo === "com-data"
-            ? { checkin: orcamento.checkin, checkout: orcamento.checkout }
-            : { periodoDesejado }),
-        }),
+        body: JSON.stringify(corpo),
       });
 
+      const dados = await resposta.json().catch(() => ({}));
       if (!resposta.ok) {
-        const corpo = await resposta.json().catch(() => ({}));
-        throw new Error(corpo.erro || "Não foi possível registrar o pedido.");
+        throw new Error(dados.erro || "Não foi possível registrar o pedido.");
       }
 
-      setEstado("enviado");
-      window.open(linkWhatsApp(mensagem), "_blank", "noopener,noreferrer");
+      if (typeof dados.id === "string") setLeadId(dados.id);
+      jaSalvo.current = JSON.stringify(corpo);
+      setEstado("parado");
     } catch (erro) {
-      // O contato nunca pode se perder por causa de uma falha nossa:
-      // mesmo com erro no registro, mandamos a pessoa para o WhatsApp.
+      // Falha nossa não pode custar o orçamento de quem já preencheu
+      // tudo. Mostramos o valor mesmo assim e avisamos com honestidade.
       setEstado("erro");
       setMensagemErro(erro instanceof Error ? erro.message : "Erro inesperado.");
-      window.open(linkWhatsApp(mensagem), "_blank", "noopener,noreferrer");
+    } finally {
+      setDesbloqueado(true);
     }
+  }
+
+  function falarNoWhatsApp() {
+    // Abre ANTES de qualquer espera: janela aberta fora do clique é
+    // exatamente o que o bloqueador de pop-up derruba.
+    window.open(linkWhatsApp(montarMensagem()), "_blank", "noopener,noreferrer");
+
+    if (!leadId) return;
+    jaSalvo.current = JSON.stringify(corpo);
+    fetch("/api/orcamento", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: leadId, ...corpo, abriuWhatsapp: true }),
+    }).catch(() => {
+      // Saber que a pessoa clicou é útil, mas não é motivo para
+      // atrapalhar a conversa que acabou de começar.
+    });
+  }
+
+  async function aoEnviar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!podeAvancar) return;
+    if (desbloqueado) {
+      falarNoWhatsApp();
+      return;
+    }
+    await registrarLead();
   }
 
   // ---- Escolha inicial do caminho ----
@@ -250,23 +426,49 @@ export function CalculadoraOrcamento() {
               <CalendarDays className="size-5 text-terra-500" aria-hidden />
               Quando vai ser?
             </legend>
+            <p className="mt-2 text-sm text-mata-600">
+              As datas em cinza já estão ocupadas — o calendário só deixa
+              escolher o que está livre de verdade.
+            </p>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <CampoData
-                label="Entrada"
-                valor={checkin}
-                aoMudar={setCheckin}
-                min={hojeISO()}
-                obrigatorio
-              />
-              <CampoData
-                label="Saída"
-                valor={checkout}
-                aoMudar={setCheckout}
-                min={checkin || hojeISO()}
-                obrigatorio
-              />
+            <div className="mt-5">
+              {janela ? (
+                <CalendarioDisponibilidade
+                  ocupados={janela.ocupados}
+                  de={janela.de}
+                  ate={janela.ate}
+                  selecao={{
+                    entrada: checkin,
+                    saida: checkout,
+                    aoSelecionar: escolherPeriodo,
+                  }}
+                  aoTentarDiaOcupado={setDiaRecusado}
+                />
+              ) : (
+                <EsqueletoCalendario />
+              )}
             </div>
+
+            {alternativas.length > 0 && (
+              <div className="mt-4 rounded-2xl bg-mata-50 p-4">
+                <p className="text-sm font-medium text-mata-800">
+                  Estas datas parecidas estão livres:
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {alternativas.map((a) => (
+                    <button
+                      key={a.entrada}
+                      type="button"
+                      onClick={() => escolherPeriodo(a.entrada, a.saida)}
+                      className="rounded-full border border-mata-200 bg-white px-4 py-2 text-sm font-medium text-mata-800 transition hover:border-terra-500 hover:text-terra-700"
+                    >
+                      {nomeDiaSemana(a.entrada)} {formatarDataBR(a.entrada)} a{" "}
+                      {formatarDataBR(a.saida)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {orcamento.pacoteObrigatorio && (
               <div className="mt-4 flex gap-3 rounded-2xl bg-terra-500/10 p-4">
@@ -287,10 +489,12 @@ export function CalculadoraOrcamento() {
                   )}
                   <button
                     type="button"
-                    onClick={() => {
-                      setCheckin(orcamento.pacoteObrigatorio!.inicio);
-                      setCheckout(orcamento.pacoteObrigatorio!.fim);
-                    }}
+                    onClick={() =>
+                      escolherPeriodo(
+                        orcamento.pacoteObrigatorio!.inicio,
+                        orcamento.pacoteObrigatorio!.fim,
+                      )
+                    }
                     className="mt-2 font-semibold text-terra-700 underline underline-offset-4"
                   >
                     Usar as datas do pacote
@@ -299,7 +503,7 @@ export function CalculadoraOrcamento() {
               </div>
             )}
 
-            <AvisoAgenda agenda={agenda} />
+            <AvisoAgenda situacao={situacao} />
           </fieldset>
         ) : (
           <fieldset>
@@ -391,8 +595,16 @@ export function CalculadoraOrcamento() {
 
         <fieldset>
           <legend className="font-display text-lg font-semibold text-mata-900">
-            Para onde enviamos a resposta?
+            {modo === "com-data"
+              ? "Para onde enviamos o seu valor?"
+              : "Para onde enviamos a resposta?"}
           </legend>
+          {modo === "com-data" && !desbloqueado && (
+            <p className="mt-2 text-sm text-mata-600">
+              Preencha nome e WhatsApp e o valor aparece aqui do lado. É só
+              para conseguirmos te responder — nada de mensagem em massa.
+            </p>
+          )}
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Campo label="Seu nome" htmlFor="nome">
@@ -448,34 +660,48 @@ export function CalculadoraOrcamento() {
             <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span>
               Não conseguimos registrar seu pedido aqui no site ({mensagemErro}),
-              mas já abrimos o WhatsApp com tudo preenchido. É só enviar a
-              mensagem que a gente te responde.
+              mas o seu valor está aí do lado. Chame no WhatsApp que a gente
+              responde na hora.
             </span>
           </p>
         )}
 
-        {estado === "enviado" && (
+        {desbloqueado && estado === "parado" && (
           <p className="flex items-start gap-2 rounded-2xl bg-mata-50 p-4 text-sm text-mata-800">
             <CheckCircle2
               className="mt-0.5 size-4 shrink-0 text-mata-600"
               aria-hidden
             />
             <span>
-              Pedido registrado! Abrimos o WhatsApp em outra aba — é só enviar a
-              mensagem. Se não abriu, verifique o bloqueador de pop-ups.
+              Pronto! Seu orçamento está aí do lado. Já guardamos seu contato —
+              se quiser fechar essa data, é só chamar no WhatsApp.
             </span>
           </p>
         )}
 
         <button
           type="submit"
-          disabled={!podeEnviar}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-terra-500 px-8 py-4 text-base font-semibold text-white shadow-lg transition hover:bg-terra-600 disabled:cursor-not-allowed disabled:bg-mata-200 disabled:text-mata-500 disabled:shadow-none"
+          disabled={!podeAvancar}
+          className={`flex w-full items-center justify-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white shadow-lg transition disabled:cursor-not-allowed disabled:bg-mata-200 disabled:text-mata-500 disabled:shadow-none ${
+            desbloqueado
+              ? "bg-zap hover:bg-zap-escuro"
+              : "bg-terra-500 hover:bg-terra-600"
+          }`}
         >
           {estado === "enviando" ? (
             <>
               <Loader2 className="size-5 animate-spin" aria-hidden />
-              Enviando...
+              Calculando...
+            </>
+          ) : desbloqueado ? (
+            <>
+              <MessageCircle className="size-5" aria-hidden />
+              Falar no WhatsApp
+            </>
+          ) : modo === "com-data" ? (
+            <>
+              <Lock className="size-5" aria-hidden />
+              Ver meu orçamento
             </>
           ) : (
             "Enviar e falar no WhatsApp"
@@ -488,10 +714,19 @@ export function CalculadoraOrcamento() {
       </form>
 
       <aside className="lg:sticky lg:top-24">
-        {modo === "com-data" ? (
+        {modo === "sem-data" ? (
+          <ResumoSemData />
+        ) : desbloqueado ? (
           <ResumoComData orcamento={orcamento} />
         ) : (
-          <ResumoSemData />
+          <ResumoBloqueado
+            // Cada passo se marca sozinho. `orcamento.valido` não serve
+            // aqui: ele só fica verdadeiro com as pessoas preenchidas, e
+            // o passo das datas ficaria pendente mesmo já escolhidas.
+            datasOk={Boolean(checkin && checkout)}
+            pessoasOk={Number(pessoas) > 0}
+            contatoOk={contatoOk}
+          />
         )}
       </aside>
     </div>
@@ -502,11 +737,7 @@ export function CalculadoraOrcamento() {
 //  Escolha do caminho
 // ============================================================
 
-function EscolhaDeCaminho({
-  onEscolher,
-}: {
-  onEscolher: (m: Modo) => void;
-}) {
+function EscolhaDeCaminho({ onEscolher }: { onEscolher: (m: Modo) => void }) {
   return (
     <div className="mx-auto max-w-3xl">
       <h2 className="text-center font-display text-2xl font-semibold text-mata-900">
@@ -529,11 +760,11 @@ function EscolhaDeCaminho({
             Já sei minha data
           </h3>
           <p className="mt-2 leading-relaxed text-mata-600">
-            Calculamos o valor exato daquele período e conferimos na hora se
-            está livre.
+            Você vê no calendário o que está livre e o que já foi reservado, e
+            calculamos o valor exato do seu período.
           </p>
           <span className="mt-4 inline-block font-semibold text-terra-600 transition group-hover:underline">
-            Calcular minha data →
+            Ver o calendário →
           </span>
         </button>
 
@@ -565,6 +796,83 @@ function EscolhaDeCaminho({
 //  Resumos
 // ============================================================
 
+/**
+ * O que ocupa o lugar do orçamento antes do contato.
+ *
+ * De propósito não mostra NADA do cálculo — nem valor, nem diárias, nem
+ * tipo de cobrança. O que mostra é o que ainda falta preencher, para que
+ * ninguém fique olhando um cartão fechado sem saber por quê.
+ */
+function ResumoBloqueado({
+  datasOk,
+  pessoasOk,
+  contatoOk,
+}: {
+  datasOk: boolean;
+  pessoasOk: boolean;
+  contatoOk: boolean;
+}) {
+  const passos = [
+    { pronto: datasOk, texto: "Escolher entrada e saída" },
+    { pronto: pessoasOk, texto: "Dizer quantas pessoas vão" },
+    { pronto: contatoOk, texto: "Preencher nome e WhatsApp" },
+  ];
+  const faltam = passos.filter((p) => !p.pronto).length;
+
+  return (
+    <div className="rounded-3xl border border-mata-100 bg-mata-800 p-6 text-areia-50 shadow-lg">
+      <span className="inline-flex rounded-2xl bg-mata-900/60 p-3">
+        <Lock className="size-5 text-terra-400" aria-hidden />
+      </span>
+
+      <h2 className="mt-4 font-display text-lg font-semibold">
+        Seu valor aparece aqui
+      </h2>
+      <p className="mt-2 text-sm leading-relaxed text-areia-200">
+        {faltam === 0 ? (
+          <>
+            Está tudo preenchido. Clique em “Ver meu orçamento” e o valor
+            aparece aqui na hora.
+          </>
+        ) : (
+          <>
+            {faltam === 1 ? "Falta um passo" : `Faltam ${faltam} passos`}, e o
+            orçamento aparece na hora — sem espera e sem precisar falar com
+            ninguém.
+          </>
+        )}
+      </p>
+
+      <ul className="mt-5 space-y-3 border-t border-mata-600 pt-5 text-sm">
+        {passos.map((p) => (
+          <li key={p.texto} className="flex items-start gap-2.5">
+            {p.pronto ? (
+              <CheckCircle2
+                className="mt-0.5 size-4 shrink-0 text-mata-300"
+                aria-hidden
+              />
+            ) : (
+              <span
+                className="mt-1 size-3.5 shrink-0 rounded-full border border-areia-300/60"
+                aria-hidden
+              />
+            )}
+            <span className={p.pronto ? "text-areia-300 line-through" : ""}>
+              {p.texto}
+            </span>
+            <span className="sr-only">{p.pronto ? "(feito)" : "(falta)"}</span>
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-5 border-t border-mata-600 pt-5 text-xs leading-relaxed text-areia-300">
+        A caução de {formatarBRL(CAUCAO)} é à parte e volta integral no final,
+        se estiver tudo certo.
+      </p>
+    </div>
+  );
+}
+
 function ResumoComData({
   orcamento,
 }: {
@@ -584,10 +892,7 @@ function ResumoComData({
           <p className="mt-1 text-sm text-areia-300">{orcamento.tipoCalculo}</p>
 
           <dl className="mt-6 space-y-3 border-t border-mata-600 pt-5 text-sm">
-            <Linha
-              rotulo="Entrada"
-              valor={formatarDataBR(orcamento.checkin)}
-            />
+            <Linha rotulo="Entrada" valor={formatarDataBR(orcamento.checkin)} />
             <Linha rotulo="Saída" valor={formatarDataBR(orcamento.checkout)} />
             <Linha rotulo="Diárias" valor={`${orcamento.dias}`} />
             <Linha rotulo="Pessoas" valor={`${orcamento.pessoas}`} />
@@ -626,7 +931,9 @@ function ResumoComData({
                   {formatarDataBR(orcamento.feriado.fim)}. As outras{" "}
                   {orcamento.diasForaDoFeriado} diária
                   {orcamento.diasForaDoFeriado > 1 ? "s" : ""} da sua estadia
-                  {orcamento.diasForaDoFeriado > 1 ? " são cobradas" : " é cobrada"}{" "}
+                  {orcamento.diasForaDoFeriado > 1
+                    ? " são cobradas"
+                    : " é cobrada"}{" "}
                   à parte.
                 </>
               ) : (
@@ -700,33 +1007,48 @@ function ResumoSemData() {
 //  Peças de interface
 // ============================================================
 
-function AvisoAgenda({ agenda }: { agenda: Agenda }) {
-  if (agenda.situacao === "ocioso") return null;
+function EsqueletoCalendario() {
+  return (
+    <div
+      className="flex h-72 items-center justify-center rounded-2xl border border-mata-100 bg-white text-sm text-mata-500"
+      aria-busy
+    >
+      <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+      Carregando a agenda do sítio...
+    </div>
+  );
+}
+
+function AvisoAgenda({ situacao }: { situacao: Situacao }) {
+  if (situacao === "ocioso") return null;
 
   const conteudo = {
     checando: {
       icone: <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />,
-      texto: "Conferindo se essa data está livre...",
+      texto: "Conferindo o período completo...",
       classe: "bg-mata-50 text-mata-700",
     },
     livre: {
       icone: <CheckCircle2 className="size-4 shrink-0" aria-hidden />,
-      texto: "Essa data está livre! Garanta agora, elas costumam voar.",
+      texto: "Período livre! Garanta agora, essas datas costumam voar.",
       classe: "bg-mata-100 text-mata-800",
     },
     ocupado: {
       icone: <XCircle className="size-4 shrink-0" aria-hidden />,
+      // Com o calendário bloqueando o que está vendido, chegar aqui quer
+      // dizer quase sempre que o feriado esticou o período para cima de
+      // uma reserva que a pessoa não chegou a clicar.
       texto:
-        "Essa data já está reservada. Envie assim mesmo que a gente sugere as datas livres mais próximas.",
+        "O período fechado dessa data esbarra numa reserva já existente. Escolha outra data no calendário.",
       classe: "bg-amber-50 text-amber-800",
     },
     desconhecido: {
       icone: <AlertCircle className="size-4 shrink-0" aria-hidden />,
       texto:
-        "Não conseguimos conferir a agenda agora. Envie o pedido que confirmamos pelo WhatsApp.",
+        "Não conseguimos conferir a agenda agora. Siga assim mesmo que confirmamos pelo WhatsApp.",
       classe: "bg-areia-100 text-mata-700",
     },
-  }[agenda.situacao];
+  }[situacao];
 
   return (
     <p

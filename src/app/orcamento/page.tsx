@@ -32,9 +32,10 @@ export default function PaginaOrcamento() {
               Faça seu orçamento
             </h1>
             <p className="mt-4 text-lg leading-relaxed text-mata-700">
-              O valor aparece na hora, conforme você preenche. Ao final,
-              enviamos tudo pronto para o nosso WhatsApp — é lá que a gente
-              confirma se a sua data está livre.
+              O calendário já mostra o que está livre e o que está ocupado. É
+              só escolher a sua data, dizer quantas pessoas vão e deixar nome e
+              WhatsApp — o valor aparece na hora, com pacote de feriado já
+              considerado.
             </p>
           </div>
 

@@ -12,8 +12,9 @@ Feito em Next.js 16 (App Router) + Tailwind CSS v4 + Supabase.
 | Página | Rota | O que é |
 |---|---|---|
 | Início | `/` | Vitrine: estrutura, galeria, preços, como chegar e dúvidas |
-| Orçamento | `/orcamento` | Calculadora ao vivo; ao enviar, grava o pedido e abre o WhatsApp preenchido |
-| Painel | `/admin` | Orçamentos recebidos, agenda e bloqueio de datas (protegido por senha) |
+| Orçamento | `/orcamento` | Calendário com as datas ocupadas bloqueadas; o valor aparece depois do contato |
+| Agenda | `/agenda` | Só datas livres e ocupadas, para mandar o link a quem pergunta. Sem link no site, `noindex` |
+| Painel | `/admin` | Duas abas: agenda (reservas e bloqueios) e CRM de leads. Protegido por senha |
 
 ---
 
@@ -65,6 +66,89 @@ Para ativar:
      https://api.estanciasfeliz.com.br/webhook/set/sitio-atendimento
    ```
 4. Desativar o v3, senão os dois respondem ao mesmo cliente.
+
+---
+
+## Calendário, captura de lead e CRM
+
+Três peças que trabalham juntas e mudaram o caminho de quem pede orçamento.
+
+### 1. A data ocupada já nasce bloqueada
+
+Antes, a pessoa escolhia a data, esperava a consulta e só então descobria
+que estava vendida. Agora `/orcamento` carrega a agenda inteira antes do
+primeiro clique (`GET /api/agenda`, 18 meses, **só datas** — nem nome, nem
+motivo, nem se é reserva ou manutenção) e o calendário simplesmente não
+deixa clicar no que não dá.
+
+O bloqueio vale para as **duas pontas**, e isso rende um caso que não é
+óbvio: como a saída também ocupa, um dia livre espremido entre duas
+reservas não aceita entrada nenhuma — a saída cairia em cima da reserva
+seguinte. O calendário marca esse dia como indisponível e explica por quê,
+em vez de aceitar o clique e deixar a pessoa num beco sem saída.
+
+A regra mora em `src/lib/ocupacao.ts`, sem banco e travada por testes
+(`podeSerEntrada`, `saidaMaxima`, `periodoLivre`). O desenho é só desenho.
+
+**O calendário não é a última palavra.** Feriado é alugado em bloco
+fechado, e o bloco pode ser maior do que as datas escolhidas — quem pede
+sábado a domingo num feriadão leva de sexta a segunda. Esse pedaço a mais
+ninguém clicou, então `/api/disponibilidade` continua conferindo o período
+efetivamente cobrado, e `/api/orcamento` reconfere no envio.
+
+### 2. O valor só aparece depois do contato
+
+A pessoa preenche nome e WhatsApp, o pedido é gravado, e **aí** o
+orçamento aparece. Quem chega até aqui vira lead mesmo que nunca clique
+no WhatsApp.
+
+```
+escolhe a data ──► preenche contato ──► POST /api/orcamento ──► valor na tela
+                                            (grava, devolve id)
+mexeu nas datas depois? ──► PATCH /api/orcamento (mesmo id)
+clicou em "Falar no WhatsApp"? ──► PATCH com abriu_whatsapp_em
+```
+
+O PATCH existe para o painel não encher de duplicata da mesma pessoa: sem
+ele, cada ajuste de data viraria um lead novo e a equipe ligaria cobrando
+a primeira data que ela tentou. Ele só alcança pedido `origem = 'site'` e
+`status = 'novo'` — assim que alguém mexe no lead pelo painel, o registro
+congela e nenhuma chamada de fora reescreve o que a equipe anotou.
+
+**Falha nossa não prende o valor.** Se o banco cair, o orçamento aparece
+do mesmo jeito, com um aviso honesto. É a mesma regra de sempre: o
+contato não pode se perder, e o cliente não paga pelo nosso problema.
+
+A tabela de preços de quem *ainda não tem data* continua aberta — ela já
+está na home, e escondê-la só puniria quem está pesquisando.
+
+### 3. A aba de CRM
+
+`orcamentos` deixou de ser "pedidos enviados" e virou a lista de leads do
+sítio. A migração `004` acrescenta o que faltava para trabalhar essa lista:
+
+| Coluna | Para que serve |
+| --- | --- |
+| `anotacoes` | O que foi conversado. Sem isso o acompanhamento vive no WhatsApp e some |
+| `contatado_em` | Separa "novo de ontem" de "esquecido há duas semanas" |
+| `abriu_whatsapp_em` | Distingue quem só espiou o preço de quem veio falar — leads de temperatura bem diferente |
+
+O painel ficou em duas abas: **Agenda** (o que vem pela frente) e
+**Leads** (o que se trabalha um a um). Numa página só, a lista de leads
+empurrava a agenda para longe, e o painel é usado muito no celular.
+
+### A página `/agenda`
+
+Mostra livre e ocupado, e nada mais — serve para mandar o link a quem
+pergunta "que datas você tem?". Está fora do menu, fora do `sitemap.ts` e
+com `noindex`: é página de link direto, não porta de entrada. Para abrir
+ao Google, troque o `robots` em `src/app/agenda/page.tsx` e acrescente a
+rota no `sitemap.ts`.
+
+> Orçamento em aberto **não** ocupa data no site público. É lead, não é
+> reserva — segurar data por causa de um pedido de preço afastaria quem
+> estava pronto para fechar. No painel ele continua aparecendo pintado,
+> porque ali a informação é útil.
 
 ---
 
@@ -215,6 +299,7 @@ Rode na ordem, no SQL Editor do Supabase:
 supabase/migrations/001_orcamentos.sql
 supabase/migrations/002_agenda.sql
 supabase/migrations/003_notificacoes.sql
+supabase/migrations/004_crm.sql
 ```
 
 O `001` cria `orcamentos` e `datas_bloqueadas` e liga RLS nas duas.
@@ -223,6 +308,10 @@ reserva, e a data ficaria presa para sempre) e permite orçamento sem data,
 para não perder o contato de quem pergunta preço antes de escolher o dia.
 O `003` cria `notificacoes`, que guarda o histórico dos avisos de WhatsApp
 e impede o lembrete de 7 dias de sair duas vezes.
+O `004` acrescenta as três colunas de CRM em `orcamentos` (`anotacoes`,
+`contatado_em`, `abriu_whatsapp_em`). **Sem ele o site funciona**, mas a
+aba de Leads não salva anotação nem registra contato, e o clique no
+WhatsApp deixa de ser marcado.
 
 ---
 
@@ -409,10 +498,16 @@ src/
 ├── app/
 │   ├── page.tsx                  # início
 │   ├── orcamento/page.tsx        # calculadora
-│   ├── api/orcamento/route.ts    # recebe o pedido (recalcula o preço no servidor)
+│   ├── agenda/page.tsx           # calendário público (noindex, sem link no site)
+│   ├── api/agenda/route.ts       # dias ocupados da janela (só datas, público)
+│   ├── api/orcamento/route.ts    # POST cria o lead, PATCH atualiza o mesmo
 │   ├── api/cron/lembretes/       # lembrete de 7 dias (chamado pelo cron)
-│   └── admin/                    # painel protegido (dispara os avisos)
-├── components/                   # header, rodapé, galeria, calculadora
+│   └── admin/                    # painel protegido, em abas (dispara os avisos)
+│       ├── PainelAbas.tsx        # agenda | leads
+│       └── CRMLeads.tsx          # funil, anotações e último contato
+├── components/
+│   ├── CalendarioDisponibilidade.tsx  # calendário compartilhado (público e calculadora)
+│   └── ...                       # header, rodapé, galeria, calculadora
 └── lib/
     ├── pricing.ts                # motor de preços (espelha o n8n)
     ├── site-config.ts            # dados do sítio: endereço, estrutura, FAQ
@@ -438,6 +533,18 @@ src/
   `notificacoes.ts` não importam Supabase, e é só por isso que o
   `npm test` alcança as duas. Quem fala com banco e rede mora ao lado, em
   `agenda.ts` e `avisos.ts`.
+- **"Hoje" é sempre o de Brasília.** A Vercel roda em UTC: às 21h daqui,
+  lá já é o dia seguinte, e o calendário abriria com a data de hoje
+  bloqueada. `hojeISO()` formata em `America/Sao_Paulo`.
+- **O rate-limit é por rota, não por IP puro.** Os baldes são um mapa só;
+  com o IP como chave, uma consulta de agenda (janela de 1 minuto) apagava
+  as marcas do envio de orçamento (janela de 10 minutos) na hora de
+  filtrar, e o limite que mais importa segurar deixava de existir. Por
+  isso `agenda:${ip}`, `orcamento:${ip}`, e assim por diante.
+- **`proximosFinsDeSemanaLivres` faz uma consulta, não 26.** Antes ia ao
+  banco por fim de semana até achar os livres. Agora traz a janela inteira
+  uma vez e decide em memória, com a mesma função pura que o calendário
+  usa.
 - **Módulo puro importa com `.ts` na frente.** `notificacoes.ts` escreve
   `from "./pricing.ts"` porque o `node --test` resolve ESM sem adivinhar
   extensão. É o que `allowImportingTsExtensions` no `tsconfig.json`

@@ -10,10 +10,12 @@ import {
   type Reserva,
 } from "@/lib/supabase";
 import { formatarBRL } from "@/lib/pricing";
+import { hojeISO } from "@/lib/ocupacao";
 import { sair } from "./actions";
-import { TabelaOrcamentos } from "./TabelaOrcamentos";
+import { CRMLeads } from "./CRMLeads";
 import { CalendarioAdmin, type Bloqueio } from "./CalendarioAdmin";
 import { GerenciarReservas } from "./GerenciarReservas";
+import { PainelAbas } from "./PainelAbas";
 
 export const metadata: Metadata = {
   title: "Painel administrativo",
@@ -161,39 +163,60 @@ export default async function PaginaAdmin() {
           />
         </section>
 
-        <section>
-          <h2 className="font-display text-2xl font-semibold text-mata-900">
-            Agenda
-          </h2>
-          <p className="mt-1 text-sm text-mata-600">
-            Reservas confirmadas pela Júlia no WhatsApp, pedidos de orçamento e
-            datas que você bloqueou à mão.
-          </p>
-          <div className="mt-5">
-            <CalendarioAdmin
-              reservas={reservas}
-              orcamentos={orcamentos}
-              bloqueios={bloqueios}
-            />
-          </div>
-          <div className="mt-5">
-            <GerenciarReservas reservas={reservas} />
-          </div>
-        </section>
-
-        <section>
-          <h2 className="font-display text-2xl font-semibold text-mata-900">
-            Orçamentos recebidos
-          </h2>
-          <p className="mt-1 text-sm text-mata-600">
-            {orcamentos.length === 0
-              ? "Nenhum pedido ainda."
-              : `${orcamentos.length} pedido${orcamentos.length > 1 ? "s" : ""} no total.`}
-          </p>
-          <div className="mt-5">
-            <TabelaOrcamentos orcamentos={orcamentos} />
-          </div>
-        </section>
+        <PainelAbas
+          abas={[
+            {
+              id: "agenda",
+              rotulo: "Agenda",
+              icone: <CalendarCheck className="size-4" aria-hidden />,
+              conteudo: (
+                <section>
+                  <h2 className="font-display text-2xl font-semibold text-mata-900">
+                    Agenda
+                  </h2>
+                  <p className="mt-1 text-sm text-mata-600">
+                    Reservas confirmadas pela Júlia no WhatsApp, pedidos de
+                    orçamento e datas que você bloqueou à mão. É esta agenda
+                    que o calendário público do site mostra.
+                  </p>
+                  <div className="mt-5">
+                    <CalendarioAdmin
+                      reservas={reservas}
+                      orcamentos={orcamentos}
+                      bloqueios={bloqueios}
+                    />
+                  </div>
+                  <div className="mt-5">
+                    <GerenciarReservas reservas={reservas} />
+                  </div>
+                </section>
+              ),
+            },
+            {
+              id: "crm",
+              rotulo: "Leads",
+              icone: <Users className="size-4" aria-hidden />,
+              contador: novos.length,
+              conteudo: (
+                <section>
+                  <h2 className="font-display text-2xl font-semibold text-mata-900">
+                    Leads
+                  </h2>
+                  <p className="mt-1 text-sm text-mata-600">
+                    {orcamentos.length === 0
+                      ? "Nenhum lead ainda."
+                      : `${orcamentos.length} pessoa${orcamentos.length > 1 ? "s" : ""} que pediu orçamento no site.`}{" "}
+                    O contato é gravado antes de a pessoa ver o valor, então
+                    muita gente aqui nunca chegou a mandar mensagem.
+                  </p>
+                  <div className="mt-5">
+                    <CRMLeads leads={orcamentos} hoje={hojeISO()} />
+                  </div>
+                </section>
+              ),
+            },
+          ]}
+        />
       </main>
     </div>
   );

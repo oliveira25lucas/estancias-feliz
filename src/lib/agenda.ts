@@ -17,7 +17,17 @@
 
 import { getSupabase, type Reserva } from "./supabase";
 import { formatarDataBR } from "./pricing";
-import { periodosColidem, somaDiasISO } from "./ocupacao";
+import {
+  diasOcupadosDaLista,
+  fimDaJanela,
+  finsDeSemanaLivres,
+  hojeISO,
+  periodosColidem,
+  somaDiasISO,
+  type Periodo,
+} from "./ocupacao";
+
+export { fimDaJanela, hojeISO };
 
 export type Conflito = {
   tipo: "reserva" | "bloqueio";
@@ -112,39 +122,87 @@ export async function verificarDisponibilidade(
   };
 }
 
+// ============================================================
+//  A agenda inteira, como conjunto de dias
+//
+//  A checagem período a período responde "esta data dá?". O calendário
+//  do site precisa do contrário: quais datas NÃO dão, todas de uma vez,
+//  para já nascer com elas bloqueadas.
+//
+//  O que ocupa é o mesmo que ocupa em `verificarDisponibilidade`:
+//  reservas não canceladas e bloqueios do painel. Orçamento em aberto
+//  NÃO entra — é lead, não é reserva, e segurar data por causa de um
+//  pedido de preço afastaria quem estava pronto para fechar.
+// ============================================================
+
+export type AgendaOcupada = {
+  de: string;
+  ate: string;
+  /** Dias ocupados em ISO, ordenados. Só datas — nada de quem reservou. */
+  dias: string[];
+};
+
+/**
+ * Todos os dias ocupados numa janela. É o que a página pública mostra e
+ * o que a calculadora usa para não deixar escolher data vendida.
+ */
+export async function agendaOcupada(
+  de: string = hojeISO(),
+  ate: string = fimDaJanela(de),
+): Promise<AgendaOcupada> {
+  const supabase = getSupabase();
+
+  const [resReservas, resBloqueios] = await Promise.all([
+    supabase
+      .from("reservas")
+      .select("data_checkin, data_checkout")
+      .neq("status", "CANCELADA")
+      .lte("data_checkin", ate)
+      .gte("data_checkout", de),
+    supabase
+      .from("datas_bloqueadas")
+      .select("data_inicio, data_fim")
+      .lte("data_inicio", ate)
+      .gte("data_fim", de),
+  ]);
+
+  if (resReservas.error) {
+    throw new Error(`Falha ao ler reservas: ${resReservas.error.message}`);
+  }
+  if (resBloqueios.error) {
+    throw new Error(`Falha ao ler bloqueios: ${resBloqueios.error.message}`);
+  }
+
+  const periodos: Periodo[] = [];
+
+  for (const r of (resReservas.data ?? []) as Partial<Reserva>[]) {
+    if (!r.data_checkin) continue;
+    periodos.push({
+      inicio: r.data_checkin,
+      // Reserva sem saída registrada ocupa ao menos o dia da entrada.
+      fim: r.data_checkout ?? r.data_checkin,
+    });
+  }
+
+  for (const b of resBloqueios.data ?? []) {
+    periodos.push({ inicio: b.data_inicio, fim: b.data_fim });
+  }
+
+  return { de, ate, dias: diasOcupadosDaLista(periodos, de, ate) };
+}
+
 /**
  * Próximas datas livres a partir de hoje, para quando o cliente pergunta
  * "o que você tem disponível?". Devolve fins de semana completos.
+ *
+ * Antes isto era uma consulta ao banco POR FIM DE SEMANA — até 26 idas
+ * e voltas para responder uma pergunta. Agora é uma só: traz a janela
+ * inteira e decide em memória.
  */
 export async function proximosFinsDeSemanaLivres(
   quantidade = 4,
 ): Promise<{ checkin: string; checkout: string }[]> {
-  const hoje = new Date();
-  const livres: { checkin: string; checkout: string }[] = [];
-
-  // Anda de semana em semana procurando a próxima sexta.
-  const cursor = new Date(hoje);
-  cursor.setDate(cursor.getDate() + ((5 - cursor.getDay() + 7) % 7 || 7));
-
-  for (let i = 0; i < 26 && livres.length < quantidade; i++) {
-    const sexta = new Date(cursor);
-    const domingo = new Date(cursor);
-    domingo.setDate(domingo.getDate() + 2);
-
-    const checkin = paraISO(sexta);
-    const checkout = paraISO(domingo);
-
-    const d = await verificarDisponibilidade(checkin, checkout);
-    if (d.livre) livres.push({ checkin, checkout });
-
-    cursor.setDate(cursor.getDate() + 7);
-  }
-
-  return livres;
-}
-
-function paraISO(d: Date): string {
-  const mes = String(d.getMonth() + 1).padStart(2, "0");
-  const dia = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mes}-${dia}`;
+  const hoje = hojeISO();
+  const { dias } = await agendaOcupada(hoje);
+  return finsDeSemanaLivres(new Set(dias), hoje, quantidade);
 }

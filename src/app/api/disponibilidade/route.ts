@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
  * preço junto.
  */
 export async function GET(request: Request) {
-  if (excedeuLimite(ipDaRequisicao(request), 30, 60_000)) {
+  if (excedeuLimite(`disponibilidade:${ipDaRequisicao(request)}`, 30, 60_000)) {
     return NextResponse.json(
       { erro: "Muitas consultas seguidas. Aguarde um instante." },
       { status: 429 },

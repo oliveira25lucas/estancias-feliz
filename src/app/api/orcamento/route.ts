@@ -7,28 +7,37 @@ import { excedeuLimite, ipDaRequisicao } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * O lead entra AQUI, e entra cedo.
+ *
+ * A calculadora não mostra mais o valor de graça: a pessoa preenche nome
+ * e WhatsApp, este POST grava o pedido e devolve o `id`, e só então o
+ * orçamento aparece na tela. Quem mexer nas datas depois disso cai no
+ * PATCH, que atualiza o MESMO registro — senão cada ajuste viraria um
+ * lead novo e o painel encheria de duplicata da mesma pessoa.
+ *
+ * O valor é sempre recalculado aqui. O que vem do navegador é palpite.
+ */
+
 const JANELA_MS = 10 * 60 * 1000;
-const LIMITE = 5;
+/** Leads novos por IP. Uma família decidindo junta não passa disso. */
+const LIMITE_NOVOS = 5;
+/** Ajustes no mesmo lead: mexer nas datas várias vezes é normal. */
+const LIMITE_AJUSTES = 40;
 
 function limpar(valor: unknown, max: number): string {
   return typeof valor === "string" ? valor.trim().slice(0, max) : "";
 }
 
-export async function POST(request: Request) {
-  if (excedeuLimite(ipDaRequisicao(request), LIMITE, JANELA_MS)) {
-    return NextResponse.json(
-      { erro: "Muitos pedidos seguidos. Tente novamente em alguns minutos." },
-      { status: 429 },
-    );
-  }
+type Pedido =
+  | { erro: string; status: number }
+  | { registro: Record<string, unknown>; extra: Record<string, unknown> };
 
-  let corpo: Record<string, unknown>;
-  try {
-    corpo = await request.json();
-  } catch {
-    return NextResponse.json({ erro: "Requisição inválida." }, { status: 400 });
-  }
-
+/**
+ * Lê o corpo, valida e recalcula. É a mesma leitura para quem está
+ * criando o lead e para quem está corrigindo o que já mandou.
+ */
+async function montarPedido(corpo: Record<string, unknown>): Promise<Pedido> {
   const nome = limpar(corpo.nome, 120);
   const telefone = limpar(corpo.telefone, 25);
   const email = limpar(corpo.email, 160);
@@ -40,13 +49,10 @@ export async function POST(request: Request) {
   const temData = corpo.temData !== false;
 
   if (nome.length < 3) {
-    return NextResponse.json({ erro: "Informe seu nome." }, { status: 400 });
+    return { erro: "Informe seu nome.", status: 400 };
   }
   if (telefone.replace(/\D/g, "").length < 10) {
-    return NextResponse.json(
-      { erro: "Informe um WhatsApp válido com DDD." },
-      { status: 400 },
-    );
+    return { erro: "Informe um WhatsApp válido com DDD.", status: 400 };
   }
 
   const base = {
@@ -57,22 +63,23 @@ export async function POST(request: Request) {
     ocasiao: ocasiao || null,
     hidromassagem,
     observacoes: observacoes || null,
-    status: "novo" as const,
     origem: "site",
   };
 
   // ---- Caminho 1: cliente ainda não escolheu a data ----
   if (!temData) {
-    const registro = {
-      ...base,
-      tem_data: false,
-      periodo_desejado: periodoDesejado || null,
-      checkin: null,
-      checkout: null,
-      valor_calculado: null,
-      tipo_calculo: null,
+    return {
+      registro: {
+        ...base,
+        tem_data: false,
+        periodo_desejado: periodoDesejado || null,
+        checkin: null,
+        checkout: null,
+        valor_calculado: null,
+        tipo_calculo: null,
+      },
+      extra: { temData: false },
     };
-    return gravar(registro, { registrado: true });
   }
 
   // ---- Caminho 2: cliente já tem data ----
@@ -83,12 +90,10 @@ export async function POST(request: Request) {
     !/^\d{4}-\d{2}-\d{2}$/.test(checkin) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(checkout)
   ) {
-    return NextResponse.json({ erro: "Datas inválidas." }, { status: 400 });
+    return { erro: "Datas inválidas.", status: 400 };
   }
 
-  // O valor é sempre recalculado aqui. O que vem do navegador é só
-  // palpite: aceitar o preço do cliente permitiria forjar um orçamento
-  // de R$ 1. As datas também podem mudar, se caírem num bloco de feriado.
+  // As datas também podem mudar aqui, se caírem num bloco de feriado.
   const orcamento = calcularOrcamento({
     checkin,
     checkout,
@@ -97,14 +102,15 @@ export async function POST(request: Request) {
   });
 
   if (!orcamento.valido) {
-    return NextResponse.json(
-      { erro: orcamento.erro ?? "Não foi possível calcular o orçamento." },
-      { status: 400 },
-    );
+    return {
+      erro: orcamento.erro ?? "Não foi possível calcular o orçamento.",
+      status: 400,
+    };
   }
 
-  // Se a data já estiver ocupada, o pedido ainda é gravado — o Lucas
-  // pode oferecer outra data. Melhor um lead com conflito do que nenhum.
+  // Data ocupada não impede o registro — o calendário do site já bloqueia
+  // o que está vendido, e um lead com conflito ainda é um lead: dá para
+  // oferecer outra data. Perder o contato é que não dá.
   let livre: boolean | null = null;
   if (supabaseConfigurado()) {
     try {
@@ -118,45 +124,77 @@ export async function POST(request: Request) {
     }
   }
 
-  const registro = {
-    ...base,
-    tem_data: true,
-    periodo_desejado: null,
-    checkin: orcamento.checkin,
-    checkout: orcamento.checkout,
-    valor_calculado: orcamento.valorTotal,
-    tipo_calculo: orcamento.tipoCalculo,
+  return {
+    registro: {
+      ...base,
+      tem_data: true,
+      periodo_desejado: null,
+      checkin: orcamento.checkin,
+      checkout: orcamento.checkout,
+      valor_calculado: orcamento.valorTotal,
+      tipo_calculo: orcamento.tipoCalculo,
+    },
+    extra: {
+      temData: true,
+      valor: orcamento.valorTotal,
+      checkin: orcamento.checkin,
+      checkout: orcamento.checkout,
+      pacoteObrigatorio: orcamento.pacoteObrigatorio ?? null,
+      disponivel: livre,
+    },
   };
-
-  return gravar(registro, {
-    registrado: true,
-    valor: orcamento.valorTotal,
-    checkin: orcamento.checkin,
-    checkout: orcamento.checkout,
-    pacoteObrigatorio: orcamento.pacoteObrigatorio ?? null,
-    disponivel: livre,
-  });
 }
 
-/**
- * Grava o pedido. Se o banco falhar, ainda respondemos ok: o cliente
- * é levado ao WhatsApp de qualquer jeito, e um contato não pode se
- * perder por causa de uma falha nossa.
- */
-async function gravar(
-  registro: Record<string, unknown>,
-  extra: Record<string, unknown>,
-) {
+async function lerCorpo(request: Request): Promise<Record<string, unknown> | null> {
+  try {
+    return (await request.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+// ============================================================
+//  POST — nasce o lead
+// ============================================================
+
+export async function POST(request: Request) {
+  const ip = ipDaRequisicao(request);
+  if (excedeuLimite(`orcamento:${ip}`, LIMITE_NOVOS, JANELA_MS)) {
+    return NextResponse.json(
+      { erro: "Muitos pedidos seguidos. Tente novamente em alguns minutos." },
+      { status: 429 },
+    );
+  }
+
+  const corpo = await lerCorpo(request);
+  if (!corpo) {
+    return NextResponse.json({ erro: "Requisição inválida." }, { status: 400 });
+  }
+
+  const pedido = await montarPedido(corpo);
+  if ("erro" in pedido) {
+    return NextResponse.json({ erro: pedido.erro }, { status: pedido.status });
+  }
+
+  const registro: Record<string, unknown> = {
+    ...pedido.registro,
+    status: "novo",
+  };
+
   if (!supabaseConfigurado()) {
     console.warn(
       "[orcamento] Supabase não configurado — pedido não foi gravado:",
       registro.nome,
       registro.telefone,
     );
-    return NextResponse.json({ ok: true, ...extra, registrado: false });
+    return NextResponse.json({ ok: true, ...pedido.extra, registrado: false });
   }
 
-  const { error } = await getSupabase().from("orcamentos").insert(registro);
+  const { data, error } = await getSupabase()
+    .from("orcamentos")
+    .insert(registro)
+    .select("id")
+    .single();
 
   if (error) {
     console.error("[orcamento] falha ao gravar no Supabase:", error.message);
@@ -166,5 +204,74 @@ async function gravar(
     );
   }
 
-  return NextResponse.json({ ok: true, ...extra });
+  return NextResponse.json({
+    ok: true,
+    registrado: true,
+    id: data.id as string,
+    ...pedido.extra,
+  });
+}
+
+// ============================================================
+//  PATCH — o mesmo lead, corrigido
+//
+//  Quem já viu o valor pode mexer nas datas, no número de pessoas, ou
+//  enfim clicar para falar no WhatsApp. Tudo isso atualiza o registro
+//  que já existe.
+//
+//  O `id` é um uuid que só quem criou o lead recebeu, e mesmo assim a
+//  atualização só alcança pedido vindo do site e ainda intocado no
+//  painel: assim que alguém marca "em contato", o registro congela e
+//  nenhuma chamada de fora reescreve o que a equipe já anotou.
+// ============================================================
+
+export async function PATCH(request: Request) {
+  const ip = ipDaRequisicao(request);
+  if (excedeuLimite(`orcamento-ajuste:${ip}`, LIMITE_AJUSTES, JANELA_MS)) {
+    return NextResponse.json(
+      { erro: "Muitas alterações seguidas." },
+      { status: 429 },
+    );
+  }
+
+  const corpo = await lerCorpo(request);
+  if (!corpo) {
+    return NextResponse.json({ erro: "Requisição inválida." }, { status: 400 });
+  }
+
+  const id = limpar(corpo.id, 40);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    return NextResponse.json({ erro: "Pedido inválido." }, { status: 400 });
+  }
+
+  const pedido = await montarPedido(corpo);
+  if ("erro" in pedido) {
+    return NextResponse.json({ erro: pedido.erro }, { status: pedido.status });
+  }
+
+  if (!supabaseConfigurado()) {
+    return NextResponse.json({ ok: true, ...pedido.extra, registrado: false });
+  }
+
+  const registro = { ...pedido.registro };
+  if (corpo.abriuWhatsapp === true) {
+    registro.abriu_whatsapp_em = new Date().toISOString();
+  }
+
+  const { error } = await getSupabase()
+    .from("orcamentos")
+    .update(registro)
+    .eq("id", id)
+    .eq("origem", "site")
+    .eq("status", "novo");
+
+  if (error) {
+    console.error("[orcamento] falha ao atualizar:", error.message);
+    return NextResponse.json(
+      { erro: "Não conseguimos atualizar seu pedido agora." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, registrado: true, id, ...pedido.extra });
 }

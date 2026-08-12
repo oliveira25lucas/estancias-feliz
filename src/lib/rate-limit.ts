@@ -10,6 +10,15 @@ type Balde = { marcas: number[] };
 
 const baldes = new Map<string, Balde>();
 
+/**
+ * A `chave` precisa incluir a ROTA, não só o IP.
+ *
+ * Os baldes são um mapa só. Com o IP puro como chave, uma consulta de
+ * agenda (janela de 1 minuto) apagava as marcas do envio de orçamento
+ * (janela de 10 minutos) na hora de filtrar — e o limite do envio, que é
+ * o que realmente importa segurar, deixava de existir. Por isso
+ * `agenda:${ip}`, `orcamento:${ip}`, e assim por diante.
+ */
 export function excedeuLimite(
   chave: string,
   limite: number,

@@ -11,7 +11,13 @@ import {
   X,
 } from "lucide-react";
 import type { Orcamento, Reserva } from "@/lib/supabase";
-import { formatarBRL, formatarDataBR, nomeDiaSemana } from "@/lib/pricing";
+import {
+  INICIAIS_DIAS,
+  MESES,
+  formatarBRL,
+  formatarDataBR,
+  nomeDiaSemana,
+} from "@/lib/pricing";
 import { diasOcupados } from "@/lib/ocupacao";
 import { bloquearPeriodo, liberarPeriodo } from "./actions";
 import { CampoData } from "@/components/CampoData";
@@ -23,12 +29,6 @@ export type Bloqueio = {
   data_fim: string;
   motivo: string | null;
 };
-
-const MESES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-];
-const DIAS_CURTOS = ["D", "S", "T", "Q", "Q", "S", "S"];
 
 /** "2026-08-11" a partir de um Date local, sem escorregar de fuso. */
 function paraISO(d: Date): string {
@@ -163,7 +163,7 @@ export function CalendarioAdmin({
         </div>
 
         <div className="mt-5 grid grid-cols-7 gap-1 text-center">
-          {DIAS_CURTOS.map((d, i) => (
+          {INICIAIS_DIAS.map((d, i) => (
             <span
               key={`${d}-${i}`}
               className="pb-2 text-xs font-semibold uppercase text-mata-400"

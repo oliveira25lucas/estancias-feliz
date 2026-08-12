@@ -106,6 +106,25 @@ const DIAS_SEMANA = [
   "Sábado",
 ] as const;
 
+/** Nomes dos meses, indexados de 0 como no `Date`. */
+export const MESES = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+] as const;
+
+/** Iniciais dos dias da semana, para o cabeçalho dos calendários. */
+export const INICIAIS_DIAS = ["D", "S", "T", "Q", "Q", "S", "S"] as const;
+
 /**
  * Constrói a data no fuso local a partir de "YYYY-MM-DD".
  * `new Date("2026-08-14")` seria lido como UTC e voltaria um dia no
