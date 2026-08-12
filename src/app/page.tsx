@@ -212,7 +212,9 @@ export default function PaginaInicial() {
                 Conheça cada canto
               </h2>
               <p className="mt-4 text-lg leading-relaxed text-mata-700">
-                Clique em qualquer foto para ver em tamanho grande.
+                As fotos estão separadas espaço por espaço — da piscina ao
+                último quarto — para você saber exatamente o que vai encontrar.
+                Clique em qualquer uma para ver em tamanho grande.
               </p>
             </div>
             <div className="mt-12">

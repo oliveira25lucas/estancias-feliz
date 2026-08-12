@@ -1,9 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, ImageIcon, X } from "lucide-react";
-import { CATEGORIAS, FOTOS, type Categoria } from "@/lib/fotos";
+import {
+  CATEGORIAS,
+  espacosDaCategoria,
+  type Categoria,
+  type Foto,
+} from "@/lib/fotos";
 
 /** Espaço reservado usado quando o arquivo da foto ainda não foi enviado. */
 function Reservado({ alt }: { alt: string }) {
@@ -20,10 +25,29 @@ export function Galeria() {
   const [aberta, setAberta] = useState<number | null>(null);
   const [comErro, setComErro] = useState<Set<string>>(new Set());
 
-  const fotos =
-    categoria === "Todas"
-      ? FOTOS
-      : FOTOS.filter((f) => f.categoria === categoria);
+  /**
+   * Cada grupo já sai daqui sabendo em que posição da lista achatada a
+   * primeira foto dele cai — é o que liga o clique na grade ao visualizador.
+   */
+  const grupos = useMemo(() => {
+    const lista = espacosDaCategoria(categoria);
+    return lista.map((grupo, i) => ({
+      ...grupo,
+      inicio: lista
+        .slice(0, i)
+        .reduce((total, anterior) => total + anterior.fotos.length, 0),
+    }));
+  }, [categoria]);
+
+  /**
+   * As setas do visualizador andam pela galeria inteira que está na tela,
+   * atravessando de um espaço para o próximo — por isso a lista achatada,
+   * com o índice que cada foto ocupa nela.
+   */
+  const fotos = useMemo<Foto[]>(
+    () => grupos.flatMap((g) => g.fotos),
+    [grupos],
+  );
 
   const marcarErro = useCallback((src: string) => {
     setComErro((anterior) => new Set(anterior).add(src));
@@ -56,7 +80,7 @@ export function Galeria() {
 
   return (
     <>
-      <div className="mb-8 flex flex-wrap justify-center gap-2">
+      <div className="mb-10 flex flex-wrap justify-center gap-2">
         {CATEGORIAS.map((c) => (
           <button
             key={c}
@@ -76,33 +100,59 @@ export function Galeria() {
         ))}
       </div>
 
-      <div className="grid auto-rows-[13rem] grid-cols-2 gap-3 sm:auto-rows-[15rem] md:grid-cols-3 lg:grid-cols-4">
-        {fotos.map((foto, i) => (
-          <button
-            key={foto.src}
-            type="button"
-            onClick={() => setAberta(i)}
-            className={`group relative overflow-hidden rounded-2xl bg-mata-100 shadow-sm transition hover:shadow-lg ${
-              foto.destaque ? "sm:col-span-2 sm:row-span-2" : ""
-            }`}
-          >
-            {comErro.has(foto.src) ? (
-              <Reservado alt={foto.alt} />
-            ) : (
-              <Image
-                src={foto.src}
-                alt={foto.alt}
-                fill
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                className="object-cover transition duration-500 group-hover:scale-105"
-                onError={() => marcarErro(foto.src)}
-              />
-            )}
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-mata-950/80 to-transparent p-3 text-left text-xs font-medium text-areia-50 opacity-0 transition group-hover:opacity-100">
-              {foto.categoria}
-            </span>
-          </button>
-        ))}
+      <div className="space-y-12">
+        {grupos.map(({ espaco, fotos: doEspaco, inicio }) => {
+          return (
+            <section key={espaco.nome} aria-labelledby={`espaco-${inicio}`}>
+              <div className="mb-5 border-b border-mata-100 pb-4">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h3
+                    id={`espaco-${inicio}`}
+                    className="font-display text-xl font-semibold text-mata-900"
+                  >
+                    {espaco.nome}
+                  </h3>
+                  <span className="text-xs uppercase tracking-widest text-mata-500">
+                    {doEspaco.length}{" "}
+                    {doEspaco.length === 1 ? "foto" : "fotos"}
+                  </span>
+                </div>
+                <p className="mt-1.5 max-w-2xl leading-relaxed text-mata-700">
+                  {espaco.descricao}
+                </p>
+              </div>
+
+              <div className="grid auto-rows-[13rem] grid-cols-2 gap-3 sm:auto-rows-[15rem] md:grid-cols-3 lg:grid-cols-4">
+                {doEspaco.map((foto, i) => (
+                  <button
+                    key={foto.src}
+                    type="button"
+                    onClick={() => setAberta(inicio + i)}
+                    className={`group relative overflow-hidden rounded-2xl bg-mata-100 shadow-sm transition hover:shadow-lg ${
+                      foto.destaque ? "sm:col-span-2 sm:row-span-2" : ""
+                    }`}
+                  >
+                    {comErro.has(foto.src) ? (
+                      <Reservado alt={foto.alt} />
+                    ) : (
+                      <Image
+                        src={foto.src}
+                        alt={foto.alt}
+                        fill
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                        className="object-cover transition duration-500 group-hover:scale-105"
+                        onError={() => marcarErro(foto.src)}
+                      />
+                    )}
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-mata-950/80 to-transparent p-3 text-left text-xs font-medium text-areia-50 opacity-0 transition group-hover:opacity-100">
+                      {espaco.nome}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {fotoAberta && (
@@ -168,7 +218,10 @@ export function Galeria() {
               )}
             </div>
             <figcaption className="mt-3 text-center text-sm text-areia-200">
-              {fotoAberta.alt}
+              <span className="font-semibold text-areia-100">
+                {fotoAberta.espaco}
+              </span>{" "}
+              · {fotoAberta.alt}
               <span className="ml-2 text-mata-400">
                 ({(aberta ?? 0) + 1} de {fotos.length})
               </span>

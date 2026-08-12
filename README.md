@@ -125,21 +125,31 @@ para não perder o contato de quem pergunta preço antes de escolher o dia.
 
 ## Fotos
 
-As fotos publicadas ficam em `public/fotos/`, já otimizadas (1600px de
-largura, JPEG qualidade 80, ~6,5 MB no total). A lista e as descrições estão
-em `src/lib/fotos.ts`.
+A galeria é organizada **por espaço**: piscina, churrasqueira, salão, cada
+quarto, cada banheiro. Quem entra no site consegue percorrer o sítio inteiro
+e entender o que tem em cada canto. São 57 fotos em 22 espaços.
 
-Os originais em alta resolução ficam na pasta `fotos/` na raiz — **fora do
-git**, por causa do tamanho (238 MB). Guarde uma cópia em outro lugar.
+Três arquivos mandam nisso:
 
-Para trocar uma foto, gere a versão web com:
+| Arquivo | Papel |
+| --- | --- |
+| `fotos/` (raiz) | Originais em alta, por espaço. **Fora do git** (237 MB) — guarde cópia em outro lugar. |
+| `scripts/gerar-fotos.py` | O manifesto da seleção: liga cada `IMG_0000` ao nome publicado e gera as versões web. |
+| `src/lib/fotos.ts` | Os espaços (nome, descrição, filtro) e a descrição de cada foto. |
+
+As fotos publicadas ficam em `public/fotos/`, já otimizadas (1600px no maior
+lado, JPEG qualidade 80, ~21 MB no total).
+
+Para trocar a seleção: edite o `MANIFESTO` em `scripts/gerar-fotos.py` e rode
 
 ```bash
-npx sharp-cli --input fotos/IMG_0000.JPG --output public/fotos/nova.jpg resize 1600
+python3 scripts/gerar-fotos.py
 ```
 
-e adicione a entrada em `src/lib/fotos.ts`. Enquanto um arquivo listado não
-existir, o site mostra um espaço reservado no lugar — nada quebra.
+O script regrava `public/fotos/` e apaga o que saiu da seleção — só `hero.jpg`,
+a foto de capa, fica de fora dessa limpeza. Depois ajuste as entradas em
+`src/lib/fotos.ts`. Enquanto um arquivo listado lá não existir, o site mostra
+um espaço reservado no lugar — nada quebra.
 
 ---
 
@@ -174,6 +184,7 @@ O deploy é na Vercel, com deploy automático a cada push na branch `main`.
 ## Estrutura
 
 ```
+scripts/gerar-fotos.py            # seleção das fotos + geração das versões web
 src/
 ├── app/
 │   ├── page.tsx                  # início
@@ -184,7 +195,7 @@ src/
 └── lib/
     ├── pricing.ts                # motor de preços (espelha o n8n)
     ├── site-config.ts            # dados do sítio: endereço, estrutura, FAQ
-    ├── fotos.ts                  # galeria
+    ├── fotos.ts                  # galeria: espaços e fotos
     ├── supabase.ts               # cliente de servidor
     └── auth.ts                   # sessão do admin
 ```
