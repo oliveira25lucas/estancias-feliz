@@ -22,6 +22,13 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Vale para as server actions desta página. Os avisos de WhatsApp saem
+ * dentro de `after()`, que roda depois da resposta mas ainda dentro do
+ * tempo da invocação — dois envios de até 15s precisam de folga.
+ */
+export const maxDuration = 60;
+
 export default async function PaginaAdmin() {
   if (!(await estaAutenticado())) redirect("/admin/login");
 

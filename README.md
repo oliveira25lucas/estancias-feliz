@@ -66,6 +66,98 @@ Para ativar:
    ```
 4. Desativar o v3, senão os dois respondem ao mesmo cliente.
 
+---
+
+## Avisos automáticos no WhatsApp
+
+O site avisa duas pessoas sozinho: o **grupo dos donos** ("Aluguel Sítio
+Estâncias Feliz") e a **Maurizia**, que faz a limpeza.
+
+| Quando | Quem recebe | O que chega |
+|---|---|---|
+| Reserva entra em `CONFIRMADA` | grupo + Maurizia | a agenda futura inteira, com a data que entrou em negrito e uma seta |
+| Reserva sai de `CONFIRMADA` (cancelada ou excluída) | grupo + Maurizia | o período riscado e a agenda já sem ele |
+| 7 dias antes da entrada | Maurizia + grupo | data, horários, quantas pessoas, e o prazo da véspera |
+
+A regra é uma frase: **avisa quem entra em `CONFIRMADA` e quem sai de
+`CONFIRMADA`**. Reserva em `PENDENTE_CONTRATO` não incomoda ninguém —
+mas aparece na lista marcada como *(aguardando contrato)*, porque a data
+está segurada e os donos precisam ver isso.
+
+```
+Painel /admin  ──►  status muda  ──►  after()  ──►  Evolution API ──►  grupo + Maurizia
+                                                        ▲
+Cron da Vercel ──►  /api/cron/lembretes (D-7)  ─────────┘
+```
+
+Três arquivos mandam nisso:
+
+| Arquivo | Papel |
+| --- | --- |
+| `src/lib/notificacoes.ts` | o texto das mensagens. Lógica pura, sem banco — os testes travam palavra por palavra |
+| `src/lib/avisos.ts` | quando avisar, quem recebe, e o registro do que já foi enviado |
+| `src/lib/whatsapp.ts` | o envio pela Evolution API |
+
+### Ligar
+
+1. Rode `supabase/migrations/003_notificacoes.sql` no SQL Editor.
+2. Pegue a apikey da Evolution no n8n (credencial *Header Auth account*,
+   a que o nó "Enviar WhatsApp" usa) e ponha em `EVOLUTION_KEY`.
+3. Descubra o JID do grupo — não é telefone, é um id que termina em
+   `@g.us`:
+   ```bash
+   node scripts/listar-grupos.mjs
+   ```
+   Copie a linha `GRUPO_DONOS_JID=` do grupo certo.
+4. Cadastre na Vercel: `EVOLUTION_KEY`, `GRUPO_DONOS_JID`,
+   `FAXINEIRA_WHATSAPP` e `CRON_SECRET`.
+5. Importe o workflow v4 atualizado no n8n (o nó `Filtrar Mensagem` ganhou
+   a lista `SEM_IA`).
+
+**Sem `EVOLUTION_KEY` nada é enviado** e nada quebra: o site registra no
+log que não avisou e segue funcionando. Vale para cada destino em separado
+— se só o JID do grupo estiver faltando, a Maurizia recebe normalmente.
+
+### Conferir antes de disparar de verdade
+
+```bash
+curl -H "x-api-token: $API_TOKEN" \
+  "https://estanciasfeliz.com.br/api/cron/lembretes?previa=1"
+```
+
+devolve a lista da agenda do jeito que ela vai sair. E para ver a mensagem
+completa de um lembrete sem mandar nada para ninguém:
+
+```bash
+curl -H "x-api-token: $API_TOKEN" \
+  "https://estanciasfeliz.com.br/api/cron/lembretes?simular=1&hoje=2026-11-13"
+```
+
+`?simular=1` monta tudo e **não envia**. `?hoje=` só é aceito junto de
+`simular=1`, para ninguém receber lembrete de data escolhida à mão.
+
+### O que vale saber antes de mexer
+
+- **A Júlia não responde nesses dois.** O grupo já era ignorado por ser
+  `@g.us`; o número da Maurizia entrou na lista `SEM_IA` do nó `Filtrar
+  Mensagem`. Sem isso, um "ok, combinado" dela viraria conversa de
+  orçamento com a IA.
+- **Mas as respostas dela chegam em algum lugar.** Os avisos saem pela
+  instância `sitio-atendimento`, o número do sítio. Com a IA calada, o que
+  a Maurizia responder fica lá esperando alguém ler — vale abrir esse
+  WhatsApp de vez em quando.
+- **O cron da Vercel fala UTC.** `0 11 * * *` em `vercel.json` é 8h de
+  Brasília. No plano Hobby a chamada acontece em algum momento dentro
+  daquela hora, não no minuto exato.
+- **Lembrete não sai duas vezes.** A tabela `notificacoes` guarda uma
+  `chave` única por reserva e data de entrada, e ela é gravada *antes* do
+  envio. Se o cron rodar duas vezes no mesmo dia, o segundo não manda nada.
+- **O envio nunca derruba o painel.** Tudo sai dentro de `after()`, depois
+  da resposta. Evolution fora do ar vira uma linha em `notificacoes.erro`,
+  não um erro na tela.
+- **A Maurizia nunca vê valor de aluguel.** Nem no aviso, nem no lembrete —
+  os testes garantem.
+
 ### Regras de preço que valem conhecer
 
 - **Reajuste anual de 10%** sobre a tabela de 2026, todo 1º de janeiro.
@@ -103,6 +195,14 @@ Abre em <http://localhost:3000>.
 | `ADMIN_SENHA` | Senha de entrada em `/admin` | Você escolhe |
 | `ADMIN_SECRET` | Assina o cookie de sessão | `openssl rand -hex 32` |
 | `API_TOKEN` | Autentica o n8n em `/api/consultar` | `openssl rand -hex 32` |
+| `EVOLUTION_KEY` | Envia os avisos de WhatsApp | n8n → credencial *Header Auth account* |
+| `GRUPO_DONOS_JID` | Grupo que recebe a agenda | `node scripts/listar-grupos.mjs` |
+| `FAXINEIRA_WHATSAPP` | WhatsApp da Maurizia, com DDI e DDD | você já tem |
+| `CRON_SECRET` | Autentica o cron da Vercel no lembrete de 7 dias | `openssl rand -hex 32` |
+
+`EVOLUTION_URL` e `EVOLUTION_INSTANCIA` são opcionais: sem elas o site usa
+`api.estanciasfeliz.com.br` e `sitio-atendimento`, a mesma instância em que
+a Júlia atende.
 
 A `SUPABASE_SERVICE_ROLE_KEY` ignora as regras de segurança do banco.
 Ela só pode existir no servidor — **nunca** use o prefixo `NEXT_PUBLIC_` nela.
@@ -114,12 +214,15 @@ Rode na ordem, no SQL Editor do Supabase:
 ```
 supabase/migrations/001_orcamentos.sql
 supabase/migrations/002_agenda.sql
+supabase/migrations/003_notificacoes.sql
 ```
 
 O `001` cria `orcamentos` e `datas_bloqueadas` e liga RLS nas duas.
 O `002` acrescenta `status` às `reservas` (sem ele não há como cancelar uma
 reserva, e a data ficaria presa para sempre) e permite orçamento sem data,
 para não perder o contato de quem pergunta preço antes de escolher o dia.
+O `003` cria `notificacoes`, que guarda o histórico dos avisos de WhatsApp
+e impede o lembrete de 7 dias de sair duas vezes.
 
 ---
 
@@ -159,24 +262,47 @@ um espaço reservado no lugar — nada quebra.
 npm run dev     # desenvolvimento
 npm run build   # build de produção
 npm start       # roda o build
-npm test        # testes do motor de preços
+npm test        # testes do motor de preços e dos textos dos avisos
 npm run lint    # eslint
+
+node scripts/listar-grupos.mjs   # descobre o JID do grupo do WhatsApp
 ```
 
 ---
 
 ## Publicação
 
-O deploy é na Vercel, com deploy automático a cada push na branch `main`.
+O deploy é na Vercel (projeto `estancias-feliz`), **pela CLI, direto desta
+pasta**. A conexão GitHub → Vercel foi desligada, então `git push`
+versiona mas **não publica nada**:
 
-1. Importe o repositório na Vercel.
-2. Cadastre as 4 variáveis de ambiente em *Settings → Environment Variables*.
-3. Em *Settings → Domains*, adicione `estanciasfeliz.com.br` e `www`.
-4. No painel de DNS do domínio, aponte os registros que a Vercel indicar.
+```bash
+npx vercel deploy          # preview, numa URL própria, sem tocar no domínio
+npx vercel deploy --prod   # publica em estanciasfeliz.com.br
+npx vercel rollback        # volta para o deploy anterior
+```
 
-> O domínio raiz `estanciasfeliz.com.br` ainda **não tem registro DNS**.
-> Os subdomínios `n8n` e `api` já apontam para `91.99.198.110` (o VPS).
-> Ao configurar o site, mexa apenas nos registros da raiz e do `www` — não
+Vale conferir num preview antes de ir ao ar. O preview tem *Deployment
+Protection*, então curl comum leva 302 — para furar a proteção:
+
+```bash
+npx vercel curl "/api/cron/lembretes?previa=1" --deployment <url-do-preview> \
+  -- --header "Authorization: Bearer $CRON_SECRET"
+```
+
+Comandos que valem saber:
+
+```bash
+npx vercel env ls      # quais variáveis existem, e em qual ambiente
+npx vercel crons ls    # confirma que o lembrete de 7 dias está registrado
+```
+
+O **cron só nasce em deploy com target production**. Por isso publique com
+`deploy --prod` em vez de promover um preview pelo painel — promover não
+registra o cron.
+
+> Os subdomínios `n8n` e `api` apontam para `91.99.198.110` (o VPS).
+> Se algum dia precisar mexer no DNS, mexa apenas na raiz e no `www` — não
 > altere `n8n` nem `api`, ou o agente do WhatsApp sai do ar.
 
 ---
@@ -185,17 +311,23 @@ O deploy é na Vercel, com deploy automático a cada push na branch `main`.
 
 ```
 scripts/gerar-fotos.py            # seleção das fotos + geração das versões web
+scripts/listar-grupos.mjs         # descobre o JID do grupo do WhatsApp
+vercel.json                       # cron do lembrete de 7 dias
 src/
 ├── app/
 │   ├── page.tsx                  # início
 │   ├── orcamento/page.tsx        # calculadora
 │   ├── api/orcamento/route.ts    # recebe o pedido (recalcula o preço no servidor)
-│   └── admin/                    # painel protegido
+│   ├── api/cron/lembretes/       # lembrete de 7 dias (chamado pelo cron)
+│   └── admin/                    # painel protegido (dispara os avisos)
 ├── components/                   # header, rodapé, galeria, calculadora
 └── lib/
     ├── pricing.ts                # motor de preços (espelha o n8n)
     ├── site-config.ts            # dados do sítio: endereço, estrutura, FAQ
     ├── fotos.ts                  # galeria: espaços e fotos
+    ├── notificacoes.ts           # texto dos avisos de WhatsApp (puro, testado)
+    ├── avisos.ts                 # quando avisar e quem recebe
+    ├── whatsapp.ts               # envio pela Evolution API
     ├── supabase.ts               # cliente de servidor
     └── auth.ts                   # sessão do admin
 ```
@@ -210,3 +342,12 @@ src/
 - **Datas são montadas componente a componente** (`parseData`), nunca com
   `new Date("2026-08-14")` — essa forma é lida como UTC e volta um dia no
   Brasil, o que trocaria uma sexta por quinta e mudaria o preço.
+- **Regra sem banco fica em arquivo separado.** `ocupacao.ts` e
+  `notificacoes.ts` não importam Supabase, e é só por isso que o
+  `npm test` alcança as duas. Quem fala com banco e rede mora ao lado, em
+  `agenda.ts` e `avisos.ts`.
+- **Módulo puro importa com `.ts` na frente.** `notificacoes.ts` escreve
+  `from "./pricing.ts"` porque o `node --test` resolve ESM sem adivinhar
+  extensão. É o que `allowImportingTsExtensions` no `tsconfig.json`
+  permite. Arquivo que só roda dentro do Next continua importando sem
+  extensão.

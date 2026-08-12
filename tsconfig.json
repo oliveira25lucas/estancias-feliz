@@ -13,6 +13,14 @@
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
+    /**
+     * Deixa um módulo puro importar outro com a extensão .ts explícita.
+     * É o que permite ao `node --test` carregar `notificacoes.ts`: o
+     * node resolve ESM sem adivinhar extensão, e sem isso o teste
+     * morreria em ERR_MODULE_NOT_FOUND. Vale só onde é necessário —
+     * o resto do código segue importando sem extensão.
+     */
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
