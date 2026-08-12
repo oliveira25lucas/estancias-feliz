@@ -22,6 +22,7 @@
  * rodam dentro do Next continuam importando sem extensão.
  */
 import {
+  CAUCAO,
   diffDias,
   formatarBRL,
   formatarDataBR,
@@ -270,4 +271,190 @@ export function mensagemLembreteParaFaxineira(r: ReservaComData): string {
     `A casa precisa estar pronta até ${precisaEstarPronto(r.data_checkin)}.`,
     "Consegue confirmar a limpeza pra mim?",
   ].join("\n");
+}
+
+// ============================================================
+//  Lead do site
+//
+//  Estas duas mensagens são as ÚNICAS que saem para um cliente sem que
+//  ele tenha escrito primeiro. Por isso o tom é de pessoa retomando um
+//  assunto que a própria pessoa começou — ela acabou de digitar o número
+//  dela num formulário nosso — e nunca de propaganda.
+//
+//  A retomada carrega uma saída explícita ("me fala que eu paro"). É
+//  educação, e é também o que segura o número: quem tem como pedir para
+//  parar não denuncia.
+// ============================================================
+
+/**
+ * O que uma mensagem de lead precisa saber. Subconjunto de `Orcamento`
+ * (src/lib/supabase.ts), para este arquivo seguir sem importar Supabase.
+ */
+export type LeadAviso = {
+  nome: string;
+  checkin: string | null;
+  checkout: string | null;
+  pessoas: number | null;
+  ocasiao: string | null;
+  /** Numérico no banco, mas o n8n já gravou string em tabela vizinha. */
+  valor_calculado: string | number | null;
+  hidromassagem: boolean | null;
+  periodo_desejado: string | null;
+  /** `null` quando não deu para conferir a agenda na hora do orçamento. */
+  disponivel?: boolean | null;
+};
+
+/** Lead que escolheu data. É o que permite recapitular período e valor. */
+export type LeadComData = LeadAviso & { checkin: string; checkout: string };
+
+export function leadTemData(l: LeadAviso): l is LeadComData {
+  return Boolean(l.checkin && l.checkout);
+}
+
+/** "Maria Aparecida da Silva" -> "Maria". Ninguém chama pelo nome inteiro. */
+export function primeiroNome(nome: string): string {
+  return nome.trim().split(/\s+/)[0] || nome.trim();
+}
+
+function valorEmReais(l: LeadAviso): string | null {
+  const n = Number(l.valor_calculado);
+  return Number.isFinite(n) && n > 0 ? formatarBRL(n) : null;
+}
+
+/** "20 pessoas · Aniversário", pulando o que a pessoa não informou. */
+function quemEQuando(l: LeadAviso): string | null {
+  const partes: string[] = [];
+  if (l.pessoas) partes.push(plural(l.pessoas, "pessoa", "pessoas"));
+  if (l.ocasiao?.trim()) partes.push(l.ocasiao.trim());
+  return partes.length > 0 ? partes.join(" · ") : null;
+}
+
+/**
+ * A primeira mensagem, disparada assim que a pessoa vira lead.
+ * Recapitula o que ela acabou de ver na tela — o valor fica registrado na
+ * conversa, e é dele que a Júlia parte quando a pessoa responder.
+ */
+export function mensagemLeadNovo(l: LeadAviso): string {
+  const linhas = [
+    `Oi, ${primeiroNome(l.nome)}! Tudo bem? 🏡`,
+    "",
+    "Aqui é a Júlia, do Sítio Estâncias Feliz. Vi que você acabou de fazer um orçamento no nosso site:",
+    "",
+  ];
+
+  if (leadTemData(l)) {
+    linhas.push(
+      `*${formatarDataBR(l.checkin)} a ${formatarDataBR(l.checkout)}* · ${diaCurto(l.checkin)} a ${diaCurto(l.checkout)}`,
+    );
+    const detalhe = quemEQuando(l);
+    if (detalhe) linhas.push(detalhe);
+    if (l.hidromassagem) linhas.push("Com hidromassagem");
+
+    const valor = valorEmReais(l);
+    if (valor) {
+      linhas.push(
+        "",
+        `*${valor}* pela estadia`,
+        `+ ${formatarBRL(CAUCAO)} de caução, que volta integral no final.`,
+      );
+    }
+
+    linhas.push("");
+    if (l.disponivel === true) {
+      linhas.push(
+        "Essa data ainda está livre. Ficou alguma dúvida, ou já posso segurar ela pra você?",
+      );
+    } else {
+      linhas.push(
+        "Ficou alguma dúvida, ou já posso confirmar essa data pra você?",
+      );
+    }
+  } else {
+    const detalhe = quemEQuando(l);
+    if (detalhe) linhas.push(detalhe);
+    if (l.periodo_desejado?.trim()) {
+      linhas.push(`Época pretendida: ${l.periodo_desejado.trim()}`);
+    }
+    linhas.push(
+      "",
+      "Me fala uma data que você tem em mente e eu já te digo na hora se está livre e quanto fica. Quer que eu te mande os fins de semana que ainda tenho abertos?",
+    );
+  }
+
+  return linhas.join("\n");
+}
+
+/**
+ * A retomada do dia seguinte, para quem não respondeu a primeira.
+ * Curta de propósito: quem não respondeu ontem não vai ler textão hoje.
+ */
+export function mensagemLeadRetomada(l: LeadAviso): string {
+  const linhas = [
+    `Oi, ${primeiroNome(l.nome)}! A Júlia de novo, do Sítio Estâncias Feliz 🌿`,
+    "",
+  ];
+
+  if (leadTemData(l)) {
+    linhas.push(
+      `Passei pra saber se você chegou a ver minha mensagem sobre *${formatarDataBR(l.checkin)} a ${formatarDataBR(l.checkout)}*.`,
+    );
+    if (l.disponivel === true) linhas.push("A data continua livre por aqui.");
+  } else {
+    linhas.push(
+      "Passei pra saber se você já pensou numa data para o sítio.",
+    );
+  }
+
+  linhas.push(
+    "",
+    "Se quiser, me manda sua dúvida que eu respondo na hora. E se não for mais o caso, é só me falar que eu não te incomodo mais. 🙂",
+  );
+
+  return linhas.join("\n");
+}
+
+/**
+ * O contexto que a Júlia recebe quando a pessoa responder.
+ *
+ * Vai para `sessoes.historico_resumido`, que o workflow do n8n carrega
+ * pelo telefone e injeta no prompt como "Conversa até agora". Sem isto a
+ * Júlia começaria do zero — perguntando data e número de pessoas para
+ * alguém que acabou de informar as duas no site, que é a forma mais
+ * rápida de a pessoa perceber que está falando com um robô.
+ */
+export function contextoDoLeadParaJulia(l: LeadAviso, hoje: string): string {
+  const linhas = [
+    `[${formatarDataBR(hoje)} · vindo do site]`,
+    `${l.nome} preencheu a calculadora de orçamento no site.`,
+  ];
+
+  if (leadTemData(l)) {
+    linhas.push(
+      `Período pedido: ${formatarDataBR(l.checkin)} a ${formatarDataBR(l.checkout)}.`,
+    );
+    const valor = valorEmReais(l);
+    if (valor) {
+      linhas.push(
+        `Valor que o sistema mostrou para ela na tela: ${valor} (+ ${formatarBRL(CAUCAO)} de caução).`,
+      );
+    }
+    if (l.disponivel === false) {
+      linhas.push("ATENÇÃO: esse período NÃO estava livre na conferência.");
+    }
+  } else {
+    linhas.push(
+      `Ainda não escolheu data. Época pretendida: ${l.periodo_desejado?.trim() || "não informou"}.`,
+    );
+  }
+
+  if (l.pessoas) linhas.push(`Pessoas: ${l.pessoas}.`);
+  if (l.ocasiao?.trim()) linhas.push(`Ocasião: ${l.ocasiao.trim()}.`);
+  if (l.hidromassagem) linhas.push("Quer hidromassagem.");
+
+  linhas.push(
+    "A Júlia já mandou a primeira mensagem recapitulando isso e perguntando se pode prosseguir.",
+    "NÃO peça de novo data nem número de pessoas: ela já informou tudo acima.",
+  );
+
+  return linhas.join("\n");
 }

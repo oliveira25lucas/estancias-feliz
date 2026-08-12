@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { enviarLembretes7Dias, previaDaAgenda } from "@/lib/avisos";
+import { retomarLeadsSemResposta } from "@/lib/leads";
 import { supabaseConfigurado } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -8,11 +9,17 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Lembrete de 7 dias — a segunda automação.
+ * O que roda uma vez por dia. Duas coisas, na mesma invocação:
  *
- * Roda uma vez por dia pelo cron da Vercel (veja `vercel.json`) e avisa
- * a Maurizia e o grupo dos donos de todo aluguel CONFIRMADO que começa
- * daqui a exatamente 7 dias.
+ *   1. LEMBRETE DE 7 DIAS. Avisa a Maurizia e o grupo dos donos de todo
+ *      aluguel CONFIRMADO que começa daqui a exatamente 7 dias.
+ *   2. RETOMADA DE LEAD. Quem pediu orçamento no site, recebeu a
+ *      mensagem automática e nunca respondeu leva um único retorno.
+ *
+ * As duas são independentes de propósito: a retomada falha com o cliente
+ * lá fora, o lembrete falha com a equipe. Um erro na primeira não pode
+ * fazer a Maurizia perder o aviso da limpeza, então ela roda depois e
+ * dentro do seu próprio try.
  *
  * O cron da Vercel chega como GET com `Authorization: Bearer $CRON_SECRET`.
  * O `x-api-token` é o atalho manual, com o mesmo token que o n8n já usa —
@@ -66,7 +73,18 @@ export async function GET(request: Request) {
     const hoje = simular ? params.get("hoje") || undefined : undefined;
     const resultado = await enviarLembretes7Dias({ hoje, simular });
 
-    return NextResponse.json(resultado);
+    // A retomada é a única automação que fala com CLIENTE. Falhar aqui
+    // não pode derrubar o lembrete da limpeza, que já saiu acima.
+    let leads;
+    try {
+      leads = await retomarLeadsSemResposta({ hoje, simular });
+    } catch (e) {
+      const erro = e instanceof Error ? e.message : "erro desconhecido";
+      console.error("[cron/lembretes] retomada de leads:", erro);
+      leads = { erro };
+    }
+
+    return NextResponse.json({ ...resultado, leads });
   } catch (e) {
     const erro = e instanceof Error ? e.message : "erro desconhecido";
     console.error("[cron/lembretes]", erro);

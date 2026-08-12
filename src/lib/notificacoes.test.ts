@@ -1,13 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  contextoDoLeadParaJulia,
   listaAgenda,
   mensagemCanceladaParaGrupo,
+  mensagemLeadNovo,
+  mensagemLeadRetomada,
   mensagemLembreteParaFaxineira,
   mensagemLembreteParaGrupo,
   mensagemNovaParaFaxineira,
   mensagemNovaParaGrupo,
+  primeiroNome,
   temDatas,
+  type LeadAviso,
   type ReservaAviso,
   type ReservaComData,
 } from "./notificacoes.ts";
@@ -200,5 +205,117 @@ test("a véspera de virada de mês não escorrega", () => {
   assert.match(
     mensagemLembreteParaFaxineira(viradaDeMes),
     /pronta até sábado, 31\/10\/2026\./,
+  );
+});
+
+// ============================================================
+//  Mensagens para o lead do site
+//
+//  Estas duas são as ÚNICAS que saem para um cliente sem que ele tenha
+//  escrito primeiro. O texto errado aqui não incomoda um colega — chega
+//  em quem ainda está decidindo se aluga.
+// ============================================================
+
+function lead(campos: Partial<LeadAviso> & { nome: string }): LeadAviso {
+  return {
+    checkin: null,
+    checkout: null,
+    pessoas: null,
+    ocasiao: null,
+    valor_calculado: null,
+    hidromassagem: null,
+    periodo_desejado: null,
+    ...campos,
+  };
+}
+
+const LEAD_COM_DATA: LeadAviso = lead({
+  nome: "Ana Paula Ferreira",
+  checkin: "2026-11-20",
+  checkout: "2026-11-22",
+  pessoas: 20,
+  ocasiao: "Aniversário",
+  valor_calculado: 3600,
+  disponivel: true,
+});
+
+test("o primeiro nome é o que a mensagem usa", () => {
+  assert.equal(primeiroNome("Ana Paula Ferreira"), "Ana");
+  assert.equal(primeiroNome("  Lucas  "), "Lucas");
+});
+
+test("a primeira mensagem recapitula período, pessoas e valor", () => {
+  const texto = mensagemLeadNovo(LEAD_COM_DATA);
+  assert.match(texto, /^Oi, Ana! Tudo bem\? 🏡/);
+  assert.match(texto, /\*20\/11\/2026 a 22\/11\/2026\* · sex a dom/);
+  assert.match(texto, /20 pessoas · Aniversário/);
+  assert.match(texto, /\*R\$\s3\.600,00\* pela estadia/);
+  assert.match(texto, /R\$\s500,00 de caução, que volta integral no final\./);
+});
+
+test("data livre é afirmada só quando a agenda confirmou", () => {
+  assert.match(
+    mensagemLeadNovo(LEAD_COM_DATA),
+    /Essa data ainda está livre\./,
+  );
+  // Sem confirmação da agenda, não se promete disponibilidade.
+  const semConferir = mensagemLeadNovo({ ...LEAD_COM_DATA, disponivel: null });
+  assert.doesNotMatch(semConferir, /ainda está livre/);
+  assert.match(semConferir, /já posso confirmar essa data pra você\?/);
+});
+
+test("a hidromassagem aparece quando foi pedida", () => {
+  assert.match(
+    mensagemLeadNovo({ ...LEAD_COM_DATA, hidromassagem: true }),
+    /Com hidromassagem/,
+  );
+  assert.doesNotMatch(mensagemLeadNovo(LEAD_COM_DATA), /hidromassagem/i);
+});
+
+test("lead sem data pede a data, e não repete valor nenhum", () => {
+  const texto = mensagemLeadNovo(
+    lead({
+      nome: "Marcos",
+      pessoas: 30,
+      ocasiao: "Casamento",
+      periodo_desejado: "novembro",
+    }),
+  );
+  assert.match(texto, /30 pessoas · Casamento/);
+  assert.match(texto, /Época pretendida: novembro/);
+  assert.match(texto, /Me fala uma data que você tem em mente/);
+  assert.doesNotMatch(texto, /R\$/);
+});
+
+test("a retomada é curta e oferece uma saída explícita", () => {
+  const texto = mensagemLeadRetomada(LEAD_COM_DATA);
+  assert.match(texto, /^Oi, Ana! A Júlia de novo/);
+  assert.match(texto, /\*20\/11\/2026 a 22\/11\/2026\*/);
+  assert.match(texto, /A data continua livre por aqui\./);
+  // A saída não é opcional: é o que segura o número contra denúncia.
+  assert.match(texto, /é só me falar que eu não te incomodo mais/);
+  // Nada de repetir o valor: quem não respondeu não quer textão.
+  assert.doesNotMatch(texto, /R\$/);
+});
+
+// ---- Contexto que a Júlia recebe ----
+
+test("o contexto proíbe a Júlia de pedir de novo o que já foi informado", () => {
+  const texto = contextoDoLeadParaJulia(LEAD_COM_DATA, "2026-08-12");
+  assert.match(texto, /^\[12\/08\/2026 · vindo do site\]/);
+  assert.match(texto, /Ana Paula Ferreira preencheu a calculadora/);
+  assert.match(texto, /Período pedido: 20\/11\/2026 a 22\/11\/2026\./);
+  assert.match(texto, /mostrou para ela na tela: R\$\s3\.600,00/);
+  assert.match(texto, /Pessoas: 20\./);
+  assert.match(texto, /NÃO peça de novo data nem número de pessoas/);
+});
+
+test("período ocupado entra no contexto como alerta", () => {
+  assert.match(
+    contextoDoLeadParaJulia(
+      { ...LEAD_COM_DATA, disponivel: false },
+      "2026-08-12",
+    ),
+    /ATENÇÃO: esse período NÃO estava livre/,
   );
 });

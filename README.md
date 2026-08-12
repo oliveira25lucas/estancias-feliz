@@ -154,14 +154,17 @@ rota no `sitemap.ts`.
 
 ## Avisos automáticos no WhatsApp
 
-O site avisa duas pessoas sozinho: o **grupo dos donos** ("Aluguel Sítio
-Estâncias Feliz") e a **Maurizia**, que faz a limpeza.
+O site escreve sozinho para três destinos: o **grupo dos donos** ("Aluguel
+Sítio Estâncias Feliz"), a **Maurizia**, que faz a limpeza, e — só com a
+chave ligada — o **próprio cliente** que virou lead.
 
 | Quando | Quem recebe | O que chega |
 |---|---|---|
 | Reserva entra em `CONFIRMADA` | grupo + Maurizia | a agenda futura inteira, com a data que entrou em negrito e uma seta |
 | Reserva sai de `CONFIRMADA` (cancelada ou excluída) | grupo + Maurizia | o período riscado e a agenda já sem ele |
 | 7 dias antes da entrada | Maurizia + grupo | data, horários, quantas pessoas, e o prazo da véspera |
+| Pessoa vira lead no site | **o cliente** | recapitulação do orçamento e "posso prosseguir?" — veja o aviso abaixo |
+| Lead não respondeu | **o cliente** | uma única retomada, com saída explícita |
 
 A regra é uma frase: **avisa quem entra em `CONFIRMADA` e quem sai de
 `CONFIRMADA`**. Reserva em `PENDENTE_CONTRATO` não incomoda ninguém —
@@ -174,13 +177,98 @@ Painel /admin  ──►  status muda  ──►  after()  ──►  Evolution 
 Cron da Vercel ──►  /api/cron/lembretes (D-7)  ─────────┘
 ```
 
-Três arquivos mandam nisso:
+Quatro arquivos mandam nisso:
 
 | Arquivo | Papel |
 | --- | --- |
 | `src/lib/notificacoes.ts` | o texto das mensagens. Lógica pura, sem banco — os testes travam palavra por palavra |
-| `src/lib/avisos.ts` | quando avisar, quem recebe, e o registro do que já foi enviado |
+| `src/lib/avisos.ts` | quando avisar a EQUIPE, quem recebe, e o registro do que já foi enviado |
+| `src/lib/leads.ts` | quando escrever para o CLIENTE, e as travas que só existem aí |
 | `src/lib/whatsapp.ts` | o envio pela Evolution API |
+
+### ⚠️ Escrever para o cliente é diferente de escrever para a equipe
+
+O grupo e a Maurizia são de casa. O lead não: ele nunca mandou mensagem
+para o sítio, só digitou o número dele num formulário.
+
+**A Evolution é WhatsApp Web automatizado, não a API oficial.** Volume
+anormal de mensagem para quem nunca escreveu é o caminho mais curto para
+o número ser banido — e é o mesmo número em que a Júlia atende todo
+mundo. Perder ele derruba o atendimento inteiro.
+
+O que joga a favor: a pessoa acabou de digitar o próprio número num
+formulário que pergunta "para onde enviamos o seu valor?". A expectativa
+de contato é legítima e a chance de denúncia é baixa. Mas não é zero, e
+por isso `leads.ts` tem três travas que `avisos.ts` não tem:
+
+| Trava | O que faz |
+| --- | --- |
+| `LEAD_WHATSAPP_ATIVO` | Sem ela valendo `1`, **nada** é enviado. Publicar o código não começa a disparar sozinho |
+| `LEAD_WHATSAPP_TETO_DIARIO` | Teto de mensagens para lead por dia, somando primeiro contato e retomadas. Padrão 30 |
+| `chave` em `notificacoes` | Uma mensagem de cada tipo por lead, para sempre — a mesma trava do lembrete de 7 dias |
+
+A retomada carrega uma saída explícita ("é só me falar que eu não te
+incomodo mais"). É educação, e é também o que segura o número: quem tem
+como pedir para parar não denuncia.
+
+**Para ligar:**
+
+```bash
+npx vercel env add LEAD_WHATSAPP_ATIVO production   # valor: 1
+npx vercel deploy --prod --yes                      # variável nova só vale no deploy seguinte
+```
+
+Para desligar às pressas, troque o valor para `0` e publique de novo — ou
+`npx vercel rollback`.
+
+### A Júlia sabe do que se trata quando a pessoa responde
+
+Não adianta mandar mensagem e, quando o cliente responder, a Júlia
+perguntar a data e o número de pessoas que ele acabou de informar no
+site. É a forma mais rápida de a pessoa perceber que está falando com um
+robô.
+
+Por isso o disparo faz duas coisas, nesta ordem:
+
+```
+lead criado ──► semeia sessoes[telefone]  ──► manda o WhatsApp
+                 (contexto do orçamento)         │
+                                                 ▼
+                        cliente responde ──► n8n carrega a sessão ──► prompt da Júlia
+```
+
+`sessoes` é a mesma tabela que o workflow do n8n carrega pelo telefone e
+injeta no prompt como "Conversa até agora". O site grava ali o período, o
+número de pessoas, a ocasião, o valor que apareceu na tela, e uma
+instrução direta: *não peça de novo o que ela já informou*.
+
+O que vale saber:
+
+- **O contexto é ACRESCENTADO, nunca substituído.** Cliente que já
+  conversou com a Júlia antes não pode perder o histórico dele porque
+  pediu um orçamento novo.
+- **A mensagem do site não aciona a Júlia.** O nó `Filtrar Mensagem`
+  descarta `key.fromMe`, então o número não responde a si mesmo.
+- **`sessoes.updated_at` é o sinal de que a pessoa respondeu.** O n8n
+  regrava essa coluna a cada turno, e só roda com mensagem que entra. O
+  site grava ali o instante do disparo; qualquer valor mais novo no dia
+  seguinte significa que houve conversa, e a retomada não sai.
+- **O disparo sai dentro de `after()`**, depois da resposta: ninguém fica
+  esperando quinze segundos de Evolution para ver o próprio orçamento.
+- **A retomada tem orçamento de tempo.** O cron tem 60s e cada envio pode
+  levar 15s. Passou de 40s, ela para e registra `restantes` — a janela
+  olha uma semana para trás justamente para o que sobrou sair no dia
+  seguinte. Nunca é descarte silencioso.
+
+### Conferir a retomada sem mandar nada
+
+```bash
+curl -H "x-api-token: $API_TOKEN" \
+  "https://www.estanciasfeliz.com.br/api/cron/lembretes?simular=1" | jq .leads
+```
+
+`?simular=1` monta as mensagens dos dois lados — lembrete e retomada — e
+não envia nenhuma.
 
 ### Ligar
 
@@ -283,6 +371,8 @@ Abre em <http://localhost:3000>.
 | `GRUPO_DONOS_JID` | Grupo que recebe a agenda | `node scripts/listar-grupos.mjs` |
 | `FAXINEIRA_WHATSAPP` | WhatsApp da Maurizia, com DDI e DDD | você já tem |
 | `CRON_SECRET` | Autentica o cron da Vercel no lembrete de 7 dias | `openssl rand -hex 32` |
+| `LEAD_WHATSAPP_ATIVO` | **Liga o disparo para o cliente.** Sem `1`, nada sai | você decide quando ligar |
+| `LEAD_WHATSAPP_TETO_DIARIO` | Teto de mensagens para lead por dia (padrão 30) | opcional |
 
 `EVOLUTION_URL` e `EVOLUTION_INSTANCIA` são opcionais: sem elas o site usa
 `api.estanciasfeliz.com.br` e `sitio-atendimento`, a mesma instância em que
@@ -300,6 +390,7 @@ supabase/migrations/001_orcamentos.sql
 supabase/migrations/002_agenda.sql
 supabase/migrations/003_notificacoes.sql
 supabase/migrations/004_crm.sql
+supabase/migrations/005_lead_whatsapp.sql
 ```
 
 O `001` cria `orcamentos` e `datas_bloqueadas` e liga RLS nas duas.
@@ -312,6 +403,10 @@ O `004` acrescenta as três colunas de CRM em `orcamentos` (`anotacoes`,
 `contatado_em`, `abriu_whatsapp_em`). **Sem ele o site funciona**, mas a
 aba de Leads não salva anotação nem registra contato, e o clique no
 WhatsApp deixa de ser marcado.
+O `005` libera os tipos `LEAD_NOVO` e `LEAD_RETOMADA` em `notificacoes` e
+guarda em `orcamentos` quando o site falou com a pessoa. Sem ele o
+disparo para o lead não sai — a trava de duplicata falha no CHECK de
+`tipo` e a mensagem é engolida com erro no log.
 
 ---
 
@@ -513,7 +608,8 @@ src/
     ├── site-config.ts            # dados do sítio: endereço, estrutura, FAQ
     ├── fotos.ts                  # galeria: espaços e fotos
     ├── notificacoes.ts           # texto dos avisos de WhatsApp (puro, testado)
-    ├── avisos.ts                 # quando avisar e quem recebe
+    ├── avisos.ts                 # quando avisar a equipe e quem recebe
+    ├── leads.ts                  # quando escrever para o CLIENTE, com as travas
     ├── whatsapp.ts               # envio pela Evolution API
     ├── supabase.ts               # cliente de servidor
     └── auth.ts                   # sessão do admin

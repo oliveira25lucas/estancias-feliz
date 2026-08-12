@@ -278,6 +278,17 @@ function Cartao({ lead: l, hoje }: { lead: Orcamento; hoje: string }) {
                 Só viu o valor
               </span>
             )}
+            {/*
+              O que o site já fez sozinho. Sem isto, dá para ligar
+              cobrando alguém que a Júlia acabou de abordar — ou pior,
+              deixar de ligar achando que o robô já resolveu.
+            */}
+            {l.avisado_em && (
+              <span className="rounded-full bg-mata-100 px-2.5 py-0.5 text-xs font-semibold text-mata-700">
+                Júlia mandou msg
+                {l.retomado_em ? " + retomada" : ""}
+              </span>
+            )}
             {l.status === "novo" && !l.contatado_em && esperando >= 2 && (
               <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
                 Esperando há {esperando} dias

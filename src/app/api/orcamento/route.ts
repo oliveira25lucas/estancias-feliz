@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { calcularOrcamento } from "@/lib/pricing";
 import { verificarDisponibilidade } from "@/lib/agenda";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase";
 import { excedeuLimite, ipDaRequisicao } from "@/lib/rate-limit";
+import { avisarLeadNovo } from "@/lib/leads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * O disparo de WhatsApp sai dentro de `after()`, depois da resposta, mas
+ * ainda dentro do tempo da invocação. O envio tem timeout de 15s e a
+ * semeadura da sessão fala com o banco antes — 30s dá folga sem prender
+ * a pessoa esperando o valor dela.
+ */
+export const maxDuration = 30;
 
 /**
  * O lead entra AQUI, e entra cedo.
@@ -204,10 +213,25 @@ export async function POST(request: Request) {
     );
   }
 
+  const id = data.id as string;
+
+  /*
+    A mensagem de boas-vindas sai DEPOIS da resposta. A pessoa está
+    olhando a tela esperando o valor dela aparecer; ela não pode ficar
+    presa em quinze segundos de Evolution API. E, se o WhatsApp estiver
+    fora do ar, isso não pode virar erro no envio do orçamento.
+
+    O disparo tem travas próprias (chave em LEAD_WHATSAPP_ATIVO, teto
+    diário e trava de duplicata). Elas moram em `src/lib/leads.ts`.
+  */
+  const disponivel =
+    typeof pedido.extra.disponivel === "boolean" ? pedido.extra.disponivel : null;
+  after(() => avisarLeadNovo(id, disponivel));
+
   return NextResponse.json({
     ok: true,
     registrado: true,
-    id: data.id as string,
+    id,
     ...pedido.extra,
   });
 }

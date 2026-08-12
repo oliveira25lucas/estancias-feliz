@@ -72,6 +72,11 @@ export type Orcamento = {
   contatado_em: string | null;
   /** Preenchido quando o lead clicou para falar no WhatsApp. */
   abriu_whatsapp_em: string | null;
+  // ---- Disparo automático de WhatsApp (migração 005) ----
+  /** Quando o SITE mandou a primeira mensagem para este lead. */
+  avisado_em: string | null;
+  /** Quando saiu a retomada do dia seguinte. Uma por lead, no máximo. */
+  retomado_em: string | null;
 };
 
 /**
