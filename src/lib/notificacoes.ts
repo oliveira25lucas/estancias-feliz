@@ -267,6 +267,12 @@ export function mensagemCanceladaParaFaxineira(
   ].join("\n");
 }
 
+/**
+ * Termina nas datas, sem pedido nenhum no fim. Já teve um "consegue
+ * confirmar a limpeza pra mim?" aqui e saiu: robô não cobra resposta de
+ * ninguém, e ela não tem para quem responder — a Júlia está calada para o
+ * número dela (lista `SEM_IA` no n8n). É recado, não conversa.
+ */
 export function mensagemLembreteParaFaxineira(r: ReservaComData): string {
   return [
     "Oi, Maurizia! ⏳",
@@ -274,8 +280,6 @@ export function mensagemLembreteParaFaxineira(r: ReservaComData): string {
     "*Falta 1 semana* para o próximo aluguel do sítio:",
     "",
     ...blocoDatas(r),
-    "",
-    "Consegue confirmar a limpeza pra mim?",
   ].join("\n");
 }
 

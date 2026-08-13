@@ -205,11 +205,14 @@ test("a faxineira recebe a agenda completa junto", () => {
   assert.match(texto, /⬅️ NOVO/);
 });
 
-test("o lembrete de 7 dias pede confirmação da limpeza", () => {
+test("o lembrete de 7 dias é recado, e termina nas datas", () => {
   const texto = mensagemLembreteParaFaxineira(NOVA);
   assert.match(texto, /\*Falta 1 semana\*/);
   assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
-  assert.match(texto, /Consegue confirmar a limpeza pra mim\?/);
+  // Nada de cobrar resposta: a Júlia está calada para o número dela, então
+  // pergunta de robô fica sem ninguém do outro lado.
+  assert.doesNotMatch(texto, /\?/);
+  assert.match(texto, /\*Pessoas:\* 30$/);
 });
 
 // ============================================================
