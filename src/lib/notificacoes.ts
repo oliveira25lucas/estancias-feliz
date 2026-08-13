@@ -16,10 +16,10 @@
  */
 
 /**
- * As duas importações abaixo levam `.ts` de propósito: este arquivo é
- * carregado pelo `node --test`, que resolve ESM sem adivinhar extensão.
- * Sem elas o teste morre em ERR_MODULE_NOT_FOUND. Os arquivos que só
- * rodam dentro do Next continuam importando sem extensão.
+ * A importação abaixo leva `.ts` de propósito: este arquivo é carregado
+ * pelo `node --test`, que resolve ESM sem adivinhar extensão. Sem ela o
+ * teste morre em ERR_MODULE_NOT_FOUND. Os arquivos que só rodam dentro do
+ * Next continuam importando sem extensão.
  */
 import {
   CAUCAO,
@@ -29,7 +29,6 @@ import {
   getDiaSemana,
   nomeDiaSemana,
 } from "./pricing.ts";
-import { somaDiasISO } from "./ocupacao.ts";
 
 /** Abreviação por dia da semana, indexada por `getDay()` (0 = domingo). */
 const DIA_CURTO = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"] as const;
@@ -84,11 +83,24 @@ function plural(n: number, singular: string, plural: string): string {
 }
 
 /**
- * Cabeçalho de uma reserva: período em negrito e, embaixo, quem e quanto.
- * Campo vazio simplesmente não aparece — reserva da Júlia costuma vir
- * sem valor, e "R$ NaN" no grupo dos donos seria pior que a omissão.
+ * Cabeçalho de uma reserva: período em negrito e, embaixo, quem e quantos.
+ *
+ * VALOR NÃO ENTRA EM AVISO INTERNO. Nem para o grupo dos donos, nem para a
+ * faxineira. O grupo é agenda, não financeiro, e mensagem de WhatsApp é
+ * encaminhada com um toque — quem precisa do valor abre o painel, onde ele
+ * está do lado do resto. (As mensagens de lead mais abaixo são outra
+ * história: ali o valor aparece porque quem recebe é o próprio cliente,
+ * que acabou de ver o número na tela do site.)
+ *
+ * `ReservaAviso` continua carregando `valor_final` de propósito: é o dado
+ * disponível que a gente escolhe não imprimir, e é isso que o teste "o
+ * valor nunca sai em aviso interno" trava. Sem o campo ali, ele não
+ * testaria nada.
+ *
+ * Campo vazio simplesmente não aparece — reserva da Júlia costuma vir sem
+ * quantidade de pessoas.
  */
-function blocoReserva(r: ReservaComData, comValor = true): string {
+function blocoReserva(r: ReservaComData): string {
   const dias = diffDias(r.data_checkin, r.data_checkout);
   const linhas = [
     `*${formatarDataBR(r.data_checkin)} a ${formatarDataBR(r.data_checkout)}*` +
@@ -99,11 +111,6 @@ function blocoReserva(r: ReservaComData, comValor = true): string {
   const detalhes: string[] = [];
   if (r.nome_cliente?.trim()) detalhes.push(r.nome_cliente.trim());
   if (r.qtd_pessoas) detalhes.push(plural(r.qtd_pessoas, "pessoa", "pessoas"));
-
-  const valor = Number(r.valor_final);
-  if (comValor && r.valor_final != null && Number.isFinite(valor) && valor > 0) {
-    detalhes.push(formatarBRL(valor));
-  }
 
   if (detalhes.length > 0) linhas.push(detalhes.join(" · "));
   return linhas.join("\n");
@@ -195,7 +202,7 @@ export function mensagemLembreteParaGrupo(
   const linhas = [
     "*🏡 SÍTIO — FALTA 1 SEMANA*",
     "",
-    blocoReserva(r, false),
+    blocoReserva(r),
     "",
     `Entrada ${dataFalada(r.data_checkin)}.`,
   ];
@@ -211,11 +218,12 @@ export function mensagemLembreteParaGrupo(
 //  com os horários que valem (8h de entrada, 16h de saída).
 // ============================================================
 
-/** A casa tem que estar pronta na véspera: a entrada é às 8h. */
-function precisaEstarPronto(checkin: string): string {
-  return dataFalada(somaDiasISO(checkin, -1));
-}
-
+/**
+ * O aviso não estipula prazo de limpeza. Já teve uma linha aqui dizendo
+ * "a casa precisa estar pronta até <véspera>", deduzida do check-in de 8h,
+ * e ela saiu: quando a Maurizia limpa é combinado entre ela e o Lucas, não
+ * é regra do sistema. Aviso automático dá o fato (as datas) e não dá ordem.
+ */
 function blocoDatas(r: ReservaComData): string[] {
   const linhas = [
     `*Entrada:* ${dataFalada(r.data_checkin)}, 8h`,
@@ -236,7 +244,6 @@ export function mensagemNovaParaFaxineira(
     "",
     ...blocoDatas(nova),
     "",
-    `A casa precisa estar pronta até ${precisaEstarPronto(nova.data_checkin)}.`,
     "Te mando um lembrete 7 dias antes também.",
     "",
     LINHA,
@@ -268,7 +275,6 @@ export function mensagemLembreteParaFaxineira(r: ReservaComData): string {
     "",
     ...blocoDatas(r),
     "",
-    `A casa precisa estar pronta até ${precisaEstarPronto(r.data_checkin)}.`,
     "Consegue confirmar a limpeza pra mim?",
   ].join("\n");
 }

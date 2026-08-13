@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   contextoDoLeadParaJulia,
   listaAgenda,
+  mensagemCanceladaParaFaxineira,
   mensagemCanceladaParaGrupo,
   mensagemLeadNovo,
   mensagemLeadRetomada,
@@ -115,21 +116,18 @@ test("o aviso de aluguel novo abre com quem entrou e depois a agenda", () => {
   const texto = mensagemNovaParaGrupo(NOVA, AGENDA);
   assert.match(texto, /^\*🏡 AGENDA SÍTIO — ENTROU ALUGUEL NOVO\*/);
   assert.match(texto, /\*20\/11\/2026 a 22\/11\/2026\* · sex a dom · 2 diárias/);
-  // `formatarBRL` separa o R$ com espaço fixo (U+00A0), daí o \s.
-  assert.match(texto, /Ana Paula · 30 pessoas · R\$\s3\.685,00/);
+  assert.match(texto, /Ana Paula · 30 pessoas$/m);
   assert.match(texto, /⬅️ NOVO/);
 });
 
-test("valor gravado como texto pelo n8n vira moeda, e valor ausente desaparece", () => {
-  assert.match(mensagemNovaParaGrupo(NOVA, AGENDA), /R\$\s3\.685,00/);
-
-  const semValor = mensagemNovaParaGrupo(
-    { ...NOVA, valor_final: null },
+test("pessoas ausente não deixa separador solto nem NaN", () => {
+  const texto = mensagemNovaParaGrupo(
+    { ...NOVA, qtd_pessoas: null, valor_final: null },
     AGENDA,
   );
-  assert.match(semValor, /Ana Paula · 30 pessoas$/m);
-  assert.doesNotMatch(semValor, /R\$/);
-  assert.doesNotMatch(semValor, /NaN/);
+  assert.match(texto, /^Ana Paula$/m);
+  assert.doesNotMatch(texto, /NaN/);
+  assert.doesNotMatch(texto, /· *$/m);
 });
 
 test("uma diária não vira 1 diárias", () => {
@@ -161,20 +159,44 @@ test("o lembrete do grupo só fala da Maurizia quando ela foi avisada", () => {
   assert.doesNotMatch(mensagemLembreteParaGrupo(NOVA, false), /Maurizia/);
 });
 
-test("o lembrete do grupo não expõe o valor combinado", () => {
-  assert.doesNotMatch(mensagemLembreteParaGrupo(NOVA, false), /R\$/);
+test("o valor nunca sai em aviso interno", () => {
+  // O grupo é agenda, não financeiro, e mensagem de WhatsApp é
+  // encaminhada com um toque. `NOVA` tem valor_final preenchido de
+  // propósito: o dado existe e a escolha é não imprimir. As mensagens de
+  // lead são outra história — lá o valor vai para o próprio cliente.
+  const internas = [
+    mensagemNovaParaGrupo(NOVA, AGENDA),
+    mensagemCanceladaParaGrupo(NOVA, AGENDA),
+    mensagemLembreteParaGrupo(NOVA, true),
+    mensagemNovaParaFaxineira(NOVA, AGENDA),
+    mensagemCanceladaParaFaxineira(NOVA, AGENDA),
+    mensagemLembreteParaFaxineira(NOVA),
+  ];
+  for (const texto of internas) {
+    assert.doesNotMatch(texto, /R\$/);
+    assert.doesNotMatch(texto, /3\.685|3685/);
+  }
 });
 
 // ---------- Faxineira ----------
 
-test("a faxineira recebe entrada, saída, horários e o prazo da véspera", () => {
+test("a faxineira recebe entrada, saída, horários e quantas pessoas", () => {
   const texto = mensagemNovaParaFaxineira(NOVA, AGENDA);
   assert.match(texto, /^Oi, Maurizia! Tudo bem\? 🏡/);
   assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
   assert.match(texto, /\*Saída:\* domingo, 22\/11\/2026, 16h/);
   assert.match(texto, /\*Pessoas:\* 30/);
-  // A entrada é 8h: tem que estar pronto na véspera, não no dia.
-  assert.match(texto, /pronta até quinta, 19\/11\/2026\./);
+});
+
+test("nenhum aviso estipula prazo de limpeza", () => {
+  // Quando a Maurizia limpa é combinado entre ela e o Lucas. O aviso dá o
+  // fato — as datas — e não dá ordem.
+  for (const texto of [
+    mensagemNovaParaFaxineira(NOVA, AGENDA),
+    mensagemLembreteParaFaxineira(NOVA),
+  ]) {
+    assert.doesNotMatch(texto, /pronta até|precisa estar pronta/);
+  }
 });
 
 test("a faxineira recebe a agenda completa junto", () => {
@@ -183,29 +205,11 @@ test("a faxineira recebe a agenda completa junto", () => {
   assert.match(texto, /⬅️ NOVO/);
 });
 
-test("a faxineira não recebe valor de aluguel", () => {
-  assert.doesNotMatch(mensagemNovaParaFaxineira(NOVA, AGENDA), /R\$/);
-  assert.doesNotMatch(mensagemLembreteParaFaxineira(NOVA), /R\$/);
-});
-
 test("o lembrete de 7 dias pede confirmação da limpeza", () => {
   const texto = mensagemLembreteParaFaxineira(NOVA);
   assert.match(texto, /\*Falta 1 semana\*/);
   assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
   assert.match(texto, /Consegue confirmar a limpeza pra mim\?/);
-});
-
-test("a véspera de virada de mês não escorrega", () => {
-  // Entrada em 01/11/2026 (domingo): a véspera é 31/10, não 01/10.
-  const viradaDeMes: ReservaComData = {
-    ...NOVA,
-    data_checkin: "2026-11-01",
-    data_checkout: "2026-11-02",
-  };
-  assert.match(
-    mensagemLembreteParaFaxineira(viradaDeMes),
-    /pronta até sábado, 31\/10\/2026\./,
-  );
 });
 
 // ============================================================
