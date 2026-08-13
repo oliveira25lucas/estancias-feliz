@@ -41,11 +41,17 @@ export function excedeuLimite(
   return balde.marcas.length > limite;
 }
 
-/** Melhor palpite de IP atrás do proxy da Vercel. */
-export function ipDaRequisicao(request: Request): string {
+/**
+ * Melhor palpite de IP atrás do proxy da Vercel.
+ *
+ * Aceita `Headers` solto além da `Request` inteira porque server action
+ * não recebe request: lá o acesso é pelo `headers()` do `next/headers`.
+ */
+export function ipDaRequisicao(origem: Request | Headers): string {
+  const cabecalhos = origem instanceof Headers ? origem : origem.headers;
   return (
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") ||
+    cabecalhos.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    cabecalhos.get("x-real-ip") ||
     "desconhecido"
   );
 }

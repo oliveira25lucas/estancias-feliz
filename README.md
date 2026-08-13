@@ -14,7 +14,7 @@ Feito em Next.js 16 (App Router) + Tailwind CSS v4 + Supabase.
 | Início | `/` | Vitrine: estrutura, galeria, preços, como chegar e dúvidas |
 | Orçamento | `/orcamento` | Calendário com as datas ocupadas bloqueadas; o valor aparece depois do contato |
 | Agenda | `/agenda` | Só datas livres e ocupadas, para mandar o link a quem pergunta. Sem link no site, `noindex` |
-| Painel | `/admin` | Duas abas: agenda (reservas e bloqueios) e CRM de leads. Protegido por senha |
+| Painel | `/admin` | Duas abas: agenda (reservas e bloqueios) e CRM de leads. Protegido por usuário e senha |
 
 ---
 
@@ -364,6 +364,7 @@ Abre em <http://localhost:3000>.
 |---|---|---|
 | `SUPABASE_URL` | Banco de orçamentos e reservas | Supabase → Project Settings → Data API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Acesso de servidor ao banco | Supabase → Project Settings → API Keys |
+| `ADMIN_USUARIO` | Usuário de entrada em `/admin` | Você escolhe |
 | `ADMIN_SENHA` | Senha de entrada em `/admin` | Você escolhe |
 | `ADMIN_SECRET` | Assina o cookie de sessão | `openssl rand -hex 32` |
 | `API_TOKEN` | Autentica o n8n em `/api/consultar` | `openssl rand -hex 32` |
@@ -612,7 +613,8 @@ src/
     ├── leads.ts                  # quando escrever para o CLIENTE, com as travas
     ├── whatsapp.ts               # envio pela Evolution API
     ├── supabase.ts               # cliente de servidor
-    └── auth.ts                   # sessão do admin
+    ├── credenciais.ts            # usuário, senha e token do admin (puro, testado)
+    └── auth.ts                   # o cookie de sessão do admin
 ```
 
 ### Decisões que valem saber

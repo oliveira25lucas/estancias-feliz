@@ -1,14 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import {
-  criarSessao,
-  encerrarSessao,
-  estaAutenticado,
-  senhaCorreta,
-} from "@/lib/auth";
+import { criarSessao, encerrarSessao, estaAutenticado } from "@/lib/auth";
+import { credenciaisCorretas } from "@/lib/credenciais";
+import { excedeuLimite, ipDaRequisicao } from "@/lib/rate-limit";
 import {
   getSupabase,
   type StatusOrcamento,
@@ -43,22 +41,67 @@ async function fotoParaAviso(id: string): Promise<ReservaAviso | null> {
   }
 }
 
+// ============================================================
+//  Entrar e sair
+//
+//  Usuário e senha, os dois vindos do ambiente. A conferência e o token
+//  do cookie estão em `src/lib/credenciais.ts` — aqui fica só o que
+//  depende da requisição: a trava de tentativas e a resposta ao form.
+// ============================================================
+
+/** O que o formulário recebe de volta quando a entrada não vai adiante. */
+export type EstadoLogin = { erro?: string; usuario?: string };
+
+const TENTATIVAS_POR_IP = 8;
+const JANELA_TENTATIVAS_MS = 10 * 60 * 1000;
+
+/**
+ * Trava de força bruta no login.
+ *
+ * O balde vive na memória da instância, e na Vercel são várias — então
+ * isto encarece a adivinhação em vez de impedi-la por completo. Ainda
+ * assim, oito tentativas a cada dez minutos por IP fica ordens de
+ * grandeza abaixo do que um script precisa, e ninguém digita a própria
+ * senha oito vezes em dez minutos.
+ */
+async function tentativasDemais(): Promise<boolean> {
+  const ip = ipDaRequisicao(await headers());
+  return excedeuLimite(`login:${ip}`, TENTATIVAS_POR_IP, JANELA_TENTATIVAS_MS);
+}
+
 export async function entrar(
-  _estadoAnterior: { erro?: string } | undefined,
+  _estadoAnterior: EstadoLogin | undefined,
   formData: FormData,
-): Promise<{ erro?: string }> {
+): Promise<EstadoLogin> {
+  const usuario = String(formData.get("usuario") ?? "").trim();
   const senha = String(formData.get("senha") ?? "");
 
-  if (!senha) return { erro: "Digite a senha." };
+  // Devolvido junto do erro para o formulário não apagar o que a pessoa
+  // já tinha digitado no campo de usuário.
+  const digitado = { usuario };
+
+  if (!usuario || !senha) {
+    return { ...digitado, erro: "Preencha usuário e senha." };
+  }
+
+  if (await tentativasDemais()) {
+    return {
+      ...digitado,
+      erro: "Tentativas demais. Espere uns dez minutos e tente de novo.",
+    };
+  }
 
   try {
-    if (!senhaCorreta(senha)) {
+    if (!credenciaisCorretas(usuario, senha)) {
       // Atraso pequeno desencoraja tentativa por força bruta.
       await new Promise((r) => setTimeout(r, 600));
-      return { erro: "Senha incorreta." };
+      // A mensagem não diz QUAL dos dois está errado: quem está
+      // adivinhando não ganha a confirmação de que o usuário existe.
+      return { ...digitado, erro: "Usuário ou senha incorretos." };
     }
   } catch (e) {
     return {
+      ...digitado,
       erro:
         e instanceof Error
           ? e.message

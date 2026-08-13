@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, CalendarCheck, LogOut, TrendingUp, Users } from "lucide-react";
-import { estaAutenticado } from "@/lib/auth";
+import { sessaoAtual } from "@/lib/auth";
 import {
   getSupabase,
   supabaseConfigurado,
@@ -32,7 +32,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export default async function PaginaAdmin() {
-  if (!(await estaAutenticado())) redirect("/admin/login");
+  const sessao = await sessaoAtual();
+  if (!sessao) redirect("/admin/login");
 
   if (!supabaseConfigurado()) {
     return <BancoNaoConfigurado />;
@@ -92,7 +93,10 @@ export default async function PaginaAdmin() {
               Painel · Estâncias Feliz
             </p>
             <p className="text-xs text-mata-400">
-              Orçamentos do site e agenda do sítio
+              Orçamentos do site e agenda do sítio · conectado como{" "}
+              <span className="font-medium text-mata-300">
+                {sessao.usuario}
+              </span>
             </p>
           </div>
           <div className="flex items-center gap-3">

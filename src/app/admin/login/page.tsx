@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { estaAutenticado } from "@/lib/auth";
 import { FormularioLogin } from "./FormularioLogin";
 
@@ -29,12 +31,26 @@ export default async function PaginaLogin() {
         </div>
 
         <div className="mt-8 rounded-3xl bg-white p-7 shadow-2xl">
+          <h1 className="font-display text-xl font-semibold text-mata-900">
+            Entrar
+          </h1>
+          <p className="mt-1 mb-6 text-sm text-mata-600">
+            Use o seu usuário e a sua senha.
+          </p>
           <FormularioLogin />
         </div>
 
-        <p className="mt-6 text-center text-xs text-mata-400">
+        <p className="mt-6 text-center text-xs leading-relaxed text-mata-400">
           Acesso restrito. Em caso de dúvida, fale com o administrador.
         </p>
+
+        <Link
+          href="/"
+          className="mx-auto mt-4 flex w-fit items-center gap-1.5 text-xs text-mata-400 transition hover:text-areia-200"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden />
+          Voltar para o site
+        </Link>
       </div>
     </main>
   );
