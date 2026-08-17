@@ -10,9 +10,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Commit, push e deploy — o ciclo completo
 
-`git push` **não publica nada**: a conexão GitHub → Vercel está desligada.
-Quem publica é a CLI da Vercel, e ela empacota o **diretório de trabalho**,
-não um commit. São dois passos separados e os dois precisam acontecer.
+**`git push` publica em produção.** A conexão GitHub → Vercel está ligada
+desde 17/08/2026 — antes não estava, e este arquivo dizia o contrário.
+Cada push em `site-inicial` cria um deploy de produção sozinho, com o cron
+registrado (conferido em 17/08). Ou seja: **pushar código quebrado derruba
+o site na hora**. Rode os quatro comandos de verificação antes do push, não
+depois.
+
+A CLI continua servindo, e ela empacota o **diretório de trabalho**, não um
+commit — é como se publica algo que ainda não foi commitado, ou se refaz um
+deploy sem um push novo.
 
 Na ordem, sem pular:
 
@@ -26,10 +33,10 @@ git add <caminhos>                    # evite `git add -A`
 git diff --cached | grep -iE '^\+.*(sb_secret|service_role|eyJhbGciOi|apikey *[:=])' || echo limpo
 git commit                            # assunto em português, corpo com o POR QUÊ, Co-Authored-By no fim
 
-# 3. enviar ao GitHub (só versiona — origin/site-inicial)
+# 3. enviar ao GitHub — ATENÇÃO: isto já publica em produção
 git push
 
-# 4. preview, sem tocar no domínio
+# 4. preview, sem tocar no domínio (opcional; o push já subiu)
 npx vercel deploy --yes
 
 # 5. verificar o preview (tem Deployment Protection: curl comum leva 302)
@@ -69,3 +76,23 @@ O site manda mensagem sozinho para o grupo dos donos e para a faxineira
 `notificacoes.ts` ou `whatsapp.ts`, leia "Avisos automáticos no WhatsApp" no
 README: **o painel de produção envia de verdade**, e o texto das mensagens é
 travado por testes em `notificacoes.test.ts`.
+
+# O workflow do n8n não é seu
+
+`n8n/atendimento-sitio-v4.json` é o agente que está no ar. Reconstruí-lo a
+partir de um snapshot baixado da API apaga qualquer mudança feita depois do
+download — em 17/08/2026 isso apagou duas do Lucas em uma hora (o Renato na
+lista `SEM_IA`, e a normalização do nono dígito), e ele só percebeu porque
+o diff do git denunciou.
+
+Antes de qualquer `PUT /api/v1/workflows/DUVUbni2SWf8TBj8`:
+
+1. Baixe o que está no ar **na hora**, não minutos antes.
+2. Compare com `n8n/atendimento-sitio-v4.json` do repositório e junte os
+   dois. O nó `Filtrar Mensagem` em especial vem do repositório: é onde
+   mora a lista de quem a Júlia não atende.
+3. Guarde o JSON anterior — é o rollback.
+4. Compile os nós de código antes de subir: extraia cada `jsCode`, embrulhe
+   em `(async function(){ ... })` e rode `node --check`.
+
+Mande só `name`, `nodes`, `connections`, `settings`; outros campos dão 400.
