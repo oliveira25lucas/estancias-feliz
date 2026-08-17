@@ -197,7 +197,8 @@ export function mensagemCanceladaParaGrupo(
  */
 export function mensagemLembreteParaGrupo(
   r: ReservaComData,
-  avisouFaxineira: boolean,
+  /** Nomes de quem já recebeu o lembrete. Vazio omite a linha. */
+  avisados: readonly string[],
 ): string {
   const linhas = [
     "*🏡 SÍTIO — FALTA 1 SEMANA*",
@@ -206,23 +207,40 @@ export function mensagemLembreteParaGrupo(
     "",
     `Entrada ${dataFalada(r.data_checkin)}.`,
   ];
-  if (avisouFaxineira) linhas.push("A Maurizia já recebeu o lembrete da limpeza.");
+
+  if (avisados.length > 0) {
+    const verbo = avisados.length > 1 ? "receberam" : "recebeu";
+    linhas.push(`${listarNomes(avisados)} já ${verbo} o lembrete.`);
+  }
+
   return linhas.join("\n");
 }
 
+/** "Maurizia" · "Maurizia e Renato" · "Maurizia, Renato e Fulano". */
+function listarNomes(nomes: readonly string[]): string {
+  if (nomes.length <= 1) return nomes[0] ?? "";
+  return `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
+}
+
 // ============================================================
-//  Faxineira
+//  Equipe do sítio — a Maurizia (limpeza) e o Renato (piscina)
 //
-//  Texto de gente, não de sistema: ela recebe isso como mensagem
-//  pessoal. Sem emoji de robô, sem "mensagem automática", e sempre
-//  com os horários que valem (8h de entrada, 16h de saída).
+//  Texto de gente, não de sistema: chega como mensagem pessoal. Sem
+//  emoji de robô, sem "mensagem automática", e sempre com os horários
+//  que valem (8h de entrada, 16h de saída).
+//
+//  O nome vem por parâmetro em vez de estar escrito no texto. Os dois
+//  precisam da mesma informação — quando entra gente no sítio e quantas —
+//  então a mensagem é uma só, e a lista de quem recebe mora em `EQUIPE`,
+//  em whatsapp.ts. Acrescentar uma terceira pessoa não mexe aqui.
 // ============================================================
 
 /**
- * O aviso não estipula prazo de limpeza. Já teve uma linha aqui dizendo
+ * O aviso não estipula prazo de trabalho. Já teve uma linha aqui dizendo
  * "a casa precisa estar pronta até <véspera>", deduzida do check-in de 8h,
- * e ela saiu: quando a Maurizia limpa é combinado entre ela e o Lucas, não
- * é regra do sistema. Aviso automático dá o fato (as datas) e não dá ordem.
+ * e ela saiu: quando a limpeza e a piscina são feitas é combinado entre
+ * eles e o Lucas, não é regra do sistema. Aviso automático dá o fato (as
+ * datas) e não dá ordem.
  */
 function blocoDatas(r: ReservaComData): string[] {
   const linhas = [
@@ -233,12 +251,13 @@ function blocoDatas(r: ReservaComData): string[] {
   return linhas;
 }
 
-export function mensagemNovaParaFaxineira(
+export function mensagemNovaParaEquipe(
+  nome: string,
   nova: ReservaComData,
   futuras: ReservaAviso[],
 ): string {
   return [
-    "Oi, Maurizia! Tudo bem? 🏡",
+    `Oi, ${nome}! Tudo bem? 🏡`,
     "",
     "Entrou um aluguel novo no sítio:",
     "",
@@ -251,12 +270,13 @@ export function mensagemNovaParaFaxineira(
   ].join("\n");
 }
 
-export function mensagemCanceladaParaFaxineira(
+export function mensagemCanceladaParaEquipe(
+  nome: string,
   cancelada: ReservaComData,
   futuras: ReservaAviso[],
 ): string {
   return [
-    "Oi, Maurizia! 🏡",
+    `Oi, ${nome}! 🏡`,
     "",
     "O aluguel abaixo foi *cancelado*, não precisa se preparar pra ele:",
     "",
@@ -270,12 +290,15 @@ export function mensagemCanceladaParaFaxineira(
 /**
  * Termina nas datas, sem pedido nenhum no fim. Já teve um "consegue
  * confirmar a limpeza pra mim?" aqui e saiu: robô não cobra resposta de
- * ninguém, e ela não tem para quem responder — a Júlia está calada para o
- * número dela (lista `SEM_IA` no n8n). É recado, não conversa.
+ * ninguém, e quem recebe não tem para quem responder — a Júlia está calada
+ * para esses números (lista `SEM_IA` no n8n). É recado, não conversa.
  */
-export function mensagemLembreteParaFaxineira(r: ReservaComData): string {
+export function mensagemLembreteParaEquipe(
+  nome: string,
+  r: ReservaComData,
+): string {
   return [
-    "Oi, Maurizia! ⏳",
+    `Oi, ${nome}! ⏳`,
     "",
     "*Falta 1 semana* para o próximo aluguel do sítio:",
     "",

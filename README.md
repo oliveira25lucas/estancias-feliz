@@ -155,16 +155,30 @@ rota no `sitemap.ts`.
 ## Avisos automáticos no WhatsApp
 
 O site escreve sozinho para três destinos: o **grupo dos donos** ("Aluguel
-Sítio Estâncias Feliz"), a **Maurizia**, que faz a limpeza, e — só com a
-chave ligada — o **próprio cliente** que virou lead.
+Sítio Estâncias Feliz"), a **equipe do sítio** e — só com a chave ligada —
+o **próprio cliente** que virou lead.
+
+A equipe hoje são duas pessoas, e as duas recebem exatamente a mesma
+mensagem, só com o nome trocado na saudação:
+
+| Quem | Papel | Variável |
+|---|---|---|
+| Maurizia | limpeza | `FAXINEIRA_WHATSAPP` |
+| Renato | piscina | `PISCINEIRO_WHATSAPP` |
 
 | Quando | Quem recebe | O que chega |
 |---|---|---|
-| Reserva entra em `CONFIRMADA` | grupo + Maurizia | a agenda futura inteira, com a data que entrou em negrito e uma seta |
-| Reserva sai de `CONFIRMADA` (cancelada ou excluída) | grupo + Maurizia | o período riscado e a agenda já sem ele |
-| 7 dias antes da entrada | Maurizia + grupo | data, horários, quantas pessoas, e o prazo da véspera |
+| Reserva entra em `CONFIRMADA` | grupo + equipe | a agenda futura inteira, com a data que entrou em negrito e uma seta |
+| Reserva sai de `CONFIRMADA` (cancelada ou excluída) | grupo + equipe | o período riscado e a agenda já sem ele |
+| 7 dias antes da entrada | equipe + grupo | data, horários e quantas pessoas; o aviso ao grupo diz quem da equipe já foi avisado |
 | Pessoa vira lead no site | **o cliente** | recapitulação do orçamento e "posso prosseguir?" — veja o aviso abaixo |
 | Lead não respondeu | **o cliente** | uma única retomada, com saída explícita |
+
+**Para acrescentar uma terceira pessoa** (jardineiro, caseiro) são quatro
+lugares, e nenhum deles é o texto da mensagem: a lista `EQUIPE` em
+`src/lib/whatsapp.ts`, o tipo `Destinatario` no mesmo arquivo (o `switch`
+não compila sem a variável nova), a variável de ambiente aqui e na Vercel,
+e a lista `SEM_IA` do nó `Filtrar Mensagem` no n8n.
 
 A regra é uma frase: **avisa quem entra em `CONFIRMADA` e quem sai de
 `CONFIRMADA`**. Reserva em `PENDENTE_CONTRATO` não incomoda ninguém —
@@ -172,7 +186,7 @@ mas aparece na lista marcada como *(aguardando contrato)*, porque a data
 está segurada e os donos precisam ver isso.
 
 ```
-Painel /admin  ──►  status muda  ──►  after()  ──►  Evolution API ──►  grupo + Maurizia
+Painel /admin  ──►  status muda  ──►  after()  ──►  Evolution API ──►  grupo + equipe
                                                         ▲
 Cron da Vercel ──►  /api/cron/lembretes (D-7)  ─────────┘
 ```
@@ -188,7 +202,7 @@ Quatro arquivos mandam nisso:
 
 ### ⚠️ Escrever para o cliente é diferente de escrever para a equipe
 
-O grupo e a Maurizia são de casa. O lead não: ele nunca mandou mensagem
+O grupo e a equipe são de casa. O lead não: ele nunca mandou mensagem
 para o sítio, só digitou o número dele num formulário.
 
 **A Evolution é WhatsApp Web automatizado, não a API oficial.** Volume
@@ -282,13 +296,13 @@ não envia nenhuma.
    ```
    Copie a linha `GRUPO_DONOS_JID=` do grupo certo.
 4. Cadastre na Vercel: `EVOLUTION_KEY`, `GRUPO_DONOS_JID`,
-   `FAXINEIRA_WHATSAPP` e `CRON_SECRET`.
+   `FAXINEIRA_WHATSAPP`, `PISCINEIRO_WHATSAPP` e `CRON_SECRET`.
 5. Importe o workflow v4 atualizado no n8n (o nó `Filtrar Mensagem` ganhou
    a lista `SEM_IA`).
 
 **Sem `EVOLUTION_KEY` nada é enviado** e nada quebra: o site registra no
 log que não avisou e segue funcionando. Vale para cada destino em separado
-— se só o JID do grupo estiver faltando, a Maurizia recebe normalmente.
+— se só o JID do grupo estiver faltando, a equipe recebe normalmente.
 
 ### Conferir antes de disparar de verdade
 
@@ -310,13 +324,13 @@ curl -H "x-api-token: $API_TOKEN" \
 
 ### O que vale saber antes de mexer
 
-- **A Júlia não responde nesses dois.** O grupo já era ignorado por ser
-  `@g.us`; o número da Maurizia entrou na lista `SEM_IA` do nó `Filtrar
-  Mensagem`. Sem isso, um "ok, combinado" dela viraria conversa de
-  orçamento com a IA.
-- **Mas as respostas dela chegam em algum lugar.** Os avisos saem pela
+- **A Júlia não responde para a equipe.** O grupo já era ignorado por ser
+  `@g.us`; os números da Maurizia e do Renato estão na lista `SEM_IA` do nó
+  `Filtrar Mensagem`. Sem isso, um "ok, combinado" viraria conversa de
+  orçamento com a IA. Número novo na equipe **precisa** entrar lá também.
+- **Mas as respostas deles chegam em algum lugar.** Os avisos saem pela
   instância `sitio-atendimento`, o número do sítio. Com a IA calada, o que
-  a Maurizia responder fica lá esperando alguém ler — vale abrir esse
+  a equipe responder fica lá esperando alguém ler — vale abrir esse
   WhatsApp de vez em quando.
 - **O cron da Vercel fala UTC.** `0 11 * * *` em `vercel.json` é 8h de
   Brasília. No plano Hobby a chamada acontece em algum momento dentro
@@ -327,7 +341,7 @@ curl -H "x-api-token: $API_TOKEN" \
 - **O envio nunca derruba o painel.** Tudo sai dentro de `after()`, depois
   da resposta. Evolution fora do ar vira uma linha em `notificacoes.erro`,
   não um erro na tela.
-- **A Maurizia nunca vê valor de aluguel.** Nem no aviso, nem no lembrete —
+- **A equipe nunca vê valor de aluguel.** Nem no aviso, nem no lembrete —
   os testes garantem.
 
 ### Regras de preço que valem conhecer
@@ -370,7 +384,8 @@ Abre em <http://localhost:3000>.
 | `API_TOKEN` | Autentica o n8n em `/api/consultar` | `openssl rand -hex 32` |
 | `EVOLUTION_KEY` | Envia os avisos de WhatsApp | n8n → credencial *Header Auth account* |
 | `GRUPO_DONOS_JID` | Grupo que recebe a agenda | `node scripts/listar-grupos.mjs` |
-| `FAXINEIRA_WHATSAPP` | WhatsApp da Maurizia, com DDI e DDD | você já tem |
+| `FAXINEIRA_WHATSAPP` | WhatsApp da Maurizia (limpeza), com DDI e DDD | você já tem |
+| `PISCINEIRO_WHATSAPP` | WhatsApp do Renato (piscina) | você já tem |
 | `CRON_SECRET` | Autentica o cron da Vercel no lembrete de 7 dias | `openssl rand -hex 32` |
 | `LEAD_WHATSAPP_ATIVO` | **Liga o disparo para o cliente.** Sem `1`, nada sai | você decide quando ligar |
 | `LEAD_WHATSAPP_TETO_DIARIO` | Teto de mensagens para lead por dia (padrão 30) | opcional |

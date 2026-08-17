@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import {
   contextoDoLeadParaJulia,
   listaAgenda,
-  mensagemCanceladaParaFaxineira,
+  mensagemCanceladaParaEquipe,
   mensagemCanceladaParaGrupo,
   mensagemLeadNovo,
   mensagemLeadRetomada,
-  mensagemLembreteParaFaxineira,
+  mensagemLembreteParaEquipe,
   mensagemLembreteParaGrupo,
-  mensagemNovaParaFaxineira,
+  mensagemNovaParaEquipe,
   mensagemNovaParaGrupo,
   primeiroNome,
   temDatas,
@@ -19,8 +19,8 @@ import {
 } from "./notificacoes.ts";
 
 /**
- * Estes testes travam o texto que chega no WhatsApp dos donos e da
- * faxineira. Se um deles quebrar, alguém vai receber mensagem torta —
+ * Estes testes travam o texto que chega no WhatsApp dos donos e da equipe
+ * do sítio. Se um deles quebrar, alguém vai receber mensagem torta —
  * conferir o texto novo antes de ajustar o teste.
  */
 
@@ -151,12 +151,20 @@ test("o cancelamento risca o período e a data sai da lista", () => {
   assert.doesNotMatch(texto, /• 20\/11 a 22\/11/);
 });
 
-test("o lembrete do grupo só fala da Maurizia quando ela foi avisada", () => {
+test("o lembrete do grupo diz quem da equipe já foi avisado", () => {
   assert.match(
-    mensagemLembreteParaGrupo(NOVA, true),
-    /A Maurizia já recebeu o lembrete da limpeza\./,
+    mensagemLembreteParaGrupo(NOVA, ["Maurizia", "Renato"]),
+    /Maurizia e Renato já receberam o lembrete\./,
   );
-  assert.doesNotMatch(mensagemLembreteParaGrupo(NOVA, false), /Maurizia/);
+  // Uma pessoa só conjuga no singular.
+  assert.match(
+    mensagemLembreteParaGrupo(NOVA, ["Maurizia"]),
+    /Maurizia já recebeu o lembrete\./,
+  );
+  // Ninguém avisado (número não configurado, ou envio falhou): a linha
+  // desaparece em vez de prometer o que não aconteceu.
+  const semNinguem = mensagemLembreteParaGrupo(NOVA, []);
+  assert.doesNotMatch(semNinguem, /Maurizia|Renato|lembrete\./);
 });
 
 test("o valor nunca sai em aviso interno", () => {
@@ -167,10 +175,10 @@ test("o valor nunca sai em aviso interno", () => {
   const internas = [
     mensagemNovaParaGrupo(NOVA, AGENDA),
     mensagemCanceladaParaGrupo(NOVA, AGENDA),
-    mensagemLembreteParaGrupo(NOVA, true),
-    mensagemNovaParaFaxineira(NOVA, AGENDA),
-    mensagemCanceladaParaFaxineira(NOVA, AGENDA),
-    mensagemLembreteParaFaxineira(NOVA),
+    mensagemLembreteParaGrupo(NOVA, ["Maurizia", "Renato"]),
+    mensagemNovaParaEquipe("Maurizia", NOVA, AGENDA),
+    mensagemCanceladaParaEquipe("Maurizia", NOVA, AGENDA),
+    mensagemLembreteParaEquipe("Maurizia", NOVA),
   ];
   for (const texto of internas) {
     assert.doesNotMatch(texto, /R\$/);
@@ -178,35 +186,59 @@ test("o valor nunca sai em aviso interno", () => {
   }
 });
 
-// ---------- Faxineira ----------
+// ---------- Equipe do sítio: Maurizia (limpeza) e Renato (piscina) ----------
 
-test("a faxineira recebe entrada, saída, horários e quantas pessoas", () => {
-  const texto = mensagemNovaParaFaxineira(NOVA, AGENDA);
+test("a equipe recebe entrada, saída, horários e quantas pessoas", () => {
+  const texto = mensagemNovaParaEquipe("Maurizia", NOVA, AGENDA);
   assert.match(texto, /^Oi, Maurizia! Tudo bem\? 🏡/);
   assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
   assert.match(texto, /\*Saída:\* domingo, 22\/11\/2026, 16h/);
   assert.match(texto, /\*Pessoas:\* 30/);
 });
 
-test("nenhum aviso estipula prazo de limpeza", () => {
-  // Quando a Maurizia limpa é combinado entre ela e o Lucas. O aviso dá o
-  // fato — as datas — e não dá ordem.
-  for (const texto of [
-    mensagemNovaParaFaxineira(NOVA, AGENDA),
-    mensagemLembreteParaFaxineira(NOVA),
-  ]) {
-    assert.doesNotMatch(texto, /pronta até|precisa estar pronta/);
+test("cada um é chamado pelo próprio nome, e o resto é igual", () => {
+  // Os dois precisam do mesmo fato: quando entra gente no sítio e quantas.
+  // Só a saudação muda — é isso que permite uma mensagem para os dois.
+  const daMaurizia = mensagemNovaParaEquipe("Maurizia", NOVA, AGENDA);
+  const doRenato = mensagemNovaParaEquipe("Renato", NOVA, AGENDA);
+
+  assert.match(doRenato, /^Oi, Renato! Tudo bem\? 🏡/);
+  assert.doesNotMatch(doRenato, /Maurizia/);
+  assert.equal(
+    daMaurizia.replace("Maurizia", "Renato"),
+    doRenato,
+    "fora o nome, os dois textos têm que ser idênticos",
+  );
+
+  // E o lembrete de 7 dias segue a mesma regra.
+  assert.match(mensagemLembreteParaEquipe("Renato", NOVA), /^Oi, Renato! ⏳/);
+  assert.match(
+    mensagemCanceladaParaEquipe("Renato", NOVA, AGENDA),
+    /^Oi, Renato! 🏡/,
+  );
+});
+
+test("nenhum aviso estipula prazo de trabalho", () => {
+  // Quando a limpeza e a piscina são feitas é combinado entre eles e o
+  // Lucas. O aviso dá o fato — as datas — e não dá ordem.
+  for (const nome of ["Maurizia", "Renato"]) {
+    for (const texto of [
+      mensagemNovaParaEquipe(nome, NOVA, AGENDA),
+      mensagemLembreteParaEquipe(nome, NOVA),
+    ]) {
+      assert.doesNotMatch(texto, /pronta até|precisa estar pronta/);
+    }
   }
 });
 
-test("a faxineira recebe a agenda completa junto", () => {
-  const texto = mensagemNovaParaFaxineira(NOVA, AGENDA);
+test("a equipe recebe a agenda completa junto", () => {
+  const texto = mensagemNovaParaEquipe("Maurizia", NOVA, AGENDA);
   assert.match(texto, /\*PRÓXIMOS ALUGUÉIS — 5 no total\*/);
   assert.match(texto, /⬅️ NOVO/);
 });
 
 test("o lembrete de 7 dias é recado, e termina nas datas", () => {
-  const texto = mensagemLembreteParaFaxineira(NOVA);
+  const texto = mensagemLembreteParaEquipe("Maurizia", NOVA);
   assert.match(texto, /\*Falta 1 semana\*/);
   assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
   // Nada de cobrar resposta: a Júlia está calada para o número dela, então

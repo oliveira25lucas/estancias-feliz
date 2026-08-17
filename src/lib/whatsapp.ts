@@ -18,7 +18,24 @@ const INSTANCIA_PADRAO = "sitio-atendimento";
 const TIMEOUT_MS = 15_000;
 
 /** Quem recebe os avisos. Cada um vem de uma variável de ambiente. */
-export type Destinatario = "grupo" | "faxineira";
+export type Destinatario = "grupo" | "faxineira" | "piscineiro";
+
+/** Todos menos o grupo: gente que trabalha no sítio e precisa das datas. */
+export type MembroEquipe = Exclude<Destinatario, "grupo">;
+
+/**
+ * A equipe que recebe aviso de agenda.
+ *
+ * O nome mora aqui, e não dentro do texto, justamente para que acrescentar
+ * gente seja acrescentar uma linha nesta lista: as mensagens recebem o
+ * nome por parâmetro e valem para qualquer um. Os dois recebem exatamente
+ * a mesma informação — datas, quantas pessoas e a agenda futura — porque é
+ * o que os dois precisam saber para se organizar.
+ */
+export const EQUIPE = [
+  { chave: "faxineira", nome: "Maurizia" },
+  { chave: "piscineiro", nome: "Renato" },
+] as const satisfies readonly { chave: MembroEquipe; nome: string }[];
 
 export function whatsappConfigurado(): boolean {
   return Boolean(process.env.EVOLUTION_KEY);
@@ -40,12 +57,43 @@ export function normalizarDestino(bruto: string): string {
   return digitos;
 }
 
-/** `null` quando a variável não está configurada — o aviso é só omitido. */
+/**
+ * Qual variável de ambiente guarda o número de cada um. O `switch` sobre o
+ * tipo é de propósito: destinatário novo sem variável correspondente não
+ * compila, em vez de falhar calado na hora de enviar.
+ */
+export function variavelDe(quem: Destinatario): string {
+  switch (quem) {
+    case "grupo":
+      return "GRUPO_DONOS_JID";
+    case "faxineira":
+      return "FAXINEIRA_WHATSAPP";
+    case "piscineiro":
+      return "PISCINEIRO_WHATSAPP";
+  }
+}
+
+/**
+ * `null` quando a variável não está configurada — o aviso é só omitido,
+ * e cada destino é independente: faltar o número do piscineiro não impede
+ * o grupo e a faxineira de receberem.
+ *
+ * As leituras de `process.env` são escritas uma por uma, sem índice
+ * dinâmico, porque é assim que o bundler garante o valor em runtime.
+ */
 export function destinoDe(quem: Destinatario): string | null {
-  const bruto =
-    quem === "grupo"
-      ? process.env.GRUPO_DONOS_JID
-      : process.env.FAXINEIRA_WHATSAPP;
+  let bruto: string | undefined;
+  switch (quem) {
+    case "grupo":
+      bruto = process.env.GRUPO_DONOS_JID;
+      break;
+    case "faxineira":
+      bruto = process.env.FAXINEIRA_WHATSAPP;
+      break;
+    case "piscineiro":
+      bruto = process.env.PISCINEIRO_WHATSAPP;
+      break;
+  }
 
   if (!bruto?.trim()) return null;
   return normalizarDestino(bruto);

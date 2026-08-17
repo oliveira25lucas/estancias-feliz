@@ -23,11 +23,11 @@ import { getSupabase } from "./supabase";
 import type { Reserva } from "./supabase";
 import {
   listaAgenda,
-  mensagemCanceladaParaFaxineira,
+  mensagemCanceladaParaEquipe,
   mensagemCanceladaParaGrupo,
-  mensagemLembreteParaFaxineira,
+  mensagemLembreteParaEquipe,
   mensagemLembreteParaGrupo,
-  mensagemNovaParaFaxineira,
+  mensagemNovaParaEquipe,
   mensagemNovaParaGrupo,
   temDatas,
   type ReservaAviso,
@@ -35,8 +35,10 @@ import {
 } from "./notificacoes";
 import { somaDiasISO } from "./ocupacao";
 import {
+  EQUIPE,
   destinoDe,
   enviarTexto,
+  variavelDe,
   whatsappConfigurado,
   type Destinatario,
 } from "./whatsapp";
@@ -156,12 +158,10 @@ async function entregar(
   const destino = destinoDe(destinatario);
 
   if (!destino) {
-    const variavel =
-      destinatario === "grupo" ? "GRUPO_DONOS_JID" : "FAXINEIRA_WHATSAPP";
     return {
       destinatario,
       enviado: false,
-      motivo: `${variavel} não configurada`,
+      motivo: `${variavelDe(destinatario)} não configurada`,
       texto,
     };
   }
@@ -208,11 +208,6 @@ async function avisarMudanca(
       ? mensagemNovaParaGrupo(reserva, futuras)
       : mensagemCanceladaParaGrupo(reserva, futuras);
 
-  const paraFaxineira =
-    tipo === "NOVA"
-      ? mensagemNovaParaFaxineira(reserva, futuras)
-      : mensagemCanceladaParaFaxineira(reserva, futuras);
-
   // Log, sem trava de duplicata: o gatilho é um clique no painel, e
   // reserva cancelada e reconfirmada precisa avisar de novo.
   //
@@ -226,10 +221,18 @@ async function avisarMudanca(
     console.error("[avisos] sem registro no banco, mas enviando mesmo assim:", e);
   }
 
-  const envios = [
-    await entregar("grupo", paraGrupo, false),
-    await entregar("faxineira", paraFaxineira, false),
-  ];
+  const envios = [await entregar("grupo", paraGrupo, false)];
+
+  // Um envio por pessoa da equipe, cada um com o próprio nome no "oi".
+  // Sequencial de propósito: a Evolution é uma instância só, e disparar
+  // em paralelo pelo mesmo número é pedir para ser limitado.
+  for (const pessoa of EQUIPE) {
+    const texto =
+      tipo === "NOVA"
+        ? mensagemNovaParaEquipe(pessoa.nome, reserva, futuras)
+        : mensagemCanceladaParaEquipe(pessoa.nome, reserva, futuras);
+    envios.push(await entregar(pessoa.chave, texto, false));
+  }
 
   if (registro) {
     try {
@@ -350,19 +353,27 @@ export async function enviarLembretes7Dias(
       continue;
     }
 
-    // A faxineira primeiro: é dela que o grupo quer saber se já sabe.
-    const paraFaxineira = await entregar(
-      "faxineira",
-      mensagemLembreteParaFaxineira(reserva),
-      simular,
-    );
+    // A equipe primeiro: é dela que o grupo quer saber se já sabe. O aviso
+    // ao grupo cita, no fim, quem de fato recebeu.
+    const daEquipe: Envio[] = [];
+    const avisados: string[] = [];
+    for (const pessoa of EQUIPE) {
+      const envio = await entregar(
+        pessoa.chave,
+        mensagemLembreteParaEquipe(pessoa.nome, reserva),
+        simular,
+      );
+      daEquipe.push(envio);
+      if (envio.enviado) avisados.push(pessoa.nome);
+    }
+
     const paraGrupo = await entregar(
       "grupo",
-      mensagemLembreteParaGrupo(reserva, paraFaxineira.enviado),
+      mensagemLembreteParaGrupo(reserva, avisados),
       simular,
     );
 
-    const envios = [paraFaxineira, paraGrupo];
+    const envios = [...daEquipe, paraGrupo];
     if (!simular) await registrarResultado(registro, envios);
 
     resultado.lembretes.push({
