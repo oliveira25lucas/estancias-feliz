@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import {
-  calcularOrcamento,
-  formatarBRL,
-  formatarDataBR,
-  tabelaDePrecos,
-} from "@/lib/pricing";
+import { calcularOrcamento, tabelaDePrecos } from "@/lib/pricing";
 import { verificarDisponibilidade, proximosFinsDeSemanaLivres } from "@/lib/agenda";
+import {
+  fatosComData,
+  fatosSemData,
+  periodoConferivel,
+} from "@/lib/fatos";
 import { supabaseConfigurado } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -71,29 +71,16 @@ export async function POST(request: Request) {
       temData: false,
       tabela,
       sugestoes,
-      fatos: [
-        "O cliente ainda não informou data.",
-        ...tabela.map(
-          (l) =>
-            `${l.titulo} (${l.detalhe}): ${l.prefixo ? l.prefixo + " " : ""}${formatarBRL(l.valor)}`,
-        ),
-        ...(sugestoes.length > 0
-          ? [
-              "Fins de semana livres a sugerir: " +
-                sugestoes
-                  .map(
-                    (s) =>
-                      `${formatarDataBR(s.checkin)} a ${formatarDataBR(s.checkout)}`,
-                  )
-                  .join("; "),
-            ]
-          : []),
-        "⛔ Não invente valores fora desta lista.",
-      ].join("\n"),
+      fatos: fatosSemData(tabela, sugestoes),
     });
   }
 
-  // ---- Com data: calcula o valor ----
+  // ---- Com data: a agenda primeiro, o preço depois ----
+  // A ordem importa. A disponibilidade NÃO depende de saber quantas pessoas
+  // vão; só o preço depende. Antes, um pedido sem "quantas pessoas" saía
+  // daqui sem uma palavra sobre a data, e a IA preenchia o silêncio — foi
+  // assim que a Júlia disse a um cliente que 02 a 04/10 estava ocupado
+  // quando estava livre.
   const orcamento = calcularOrcamento({
     checkin,
     checkout,
@@ -101,28 +88,21 @@ export async function POST(request: Request) {
     hidromassagem,
   });
 
-  if (!orcamento.valido) {
-    return NextResponse.json(
-      {
-        temData: true,
-        erro: orcamento.erro,
-        fatos: `Não foi possível calcular: ${orcamento.erro}. Peça a informação que falta e NÃO mencione nenhum valor.`,
-      },
-      { status: 200 },
-    );
-  }
+  // Se a data cai em feriado, o que precisa estar livre é o bloco inteiro —
+  // por isso o período conferido é o cobrado, e não o pedido. Sem orçamento
+  // válido não há bloco calculado, então vale o que o cliente disse.
+  const inicio = orcamento.valido ? orcamento.checkin : checkin;
+  const fim = orcamento.valido ? orcamento.checkout : checkout;
+  const conferivel = periodoConferivel(inicio, fim);
 
-  // ---- Disponibilidade do período efetivamente cobrado ----
-  // Se a data cai em feriado, o que precisa estar livre é o bloco inteiro.
   let disponibilidade = null;
   let erroAgenda: string | null = null;
 
-  if (supabaseConfigurado()) {
+  if (!conferivel) {
+    erroAgenda = "período incompleto ou mal formado";
+  } else if (supabaseConfigurado()) {
     try {
-      disponibilidade = await verificarDisponibilidade(
-        orcamento.checkin,
-        orcamento.checkout,
-      );
+      disponibilidade = await verificarDisponibilidade(inicio, fim);
     } catch (e) {
       erroAgenda = e instanceof Error ? e.message : "erro desconhecido";
     }
@@ -130,58 +110,12 @@ export async function POST(request: Request) {
     erroAgenda = "banco não configurado";
   }
 
-  // ---- Fatos que a IA pode afirmar ----
-  const fatos: string[] = [];
-
-  if (orcamento.pacoteObrigatorio) {
-    fatos.push(
-      `⚠️ A data pedida cai em feriado. ${orcamento.pacoteObrigatorio.motivo}`,
-    );
-    if (orcamento.pacoteObrigatorio.inicioAlternativo) {
-      fatos.push(
-        `O cliente também pode entrar em ${formatarDataBR(orcamento.pacoteObrigatorio.inicioAlternativo)}, pagando o mesmo pacote.`,
-      );
-    }
-  }
-
-  fatos.push(
-    `Período: ${formatarDataBR(orcamento.checkin)} a ${formatarDataBR(orcamento.checkout)} (${orcamento.dias} ${orcamento.dias === 1 ? "diária" : "diárias"}).`,
-    `Pessoas: ${orcamento.pessoas}.`,
-    `Tipo de cálculo: ${orcamento.tipoCalculo}.`,
-    `╔══ VALOR OFICIAL ══╗ ${formatarBRL(orcamento.valorTotal)}`,
-    `Caução à parte: ${formatarBRL(orcamento.caucao)}, devolvida ao final.`,
-  );
-
-  if (orcamento.valorHidromassagem > 0) {
-    fatos.push(
-      `Inclui hidromassagem: ${formatarBRL(orcamento.valorHidromassagem)}.`,
-    );
-  }
-
-  if (disponibilidade) {
-    fatos.push(
-      disponibilidade.livre
-        ? "✅ DISPONIBILIDADE: a data está LIVRE. Pode confirmar ao cliente."
-        : `❌ DISPONIBILIDADE: a data NÃO está livre. ${disponibilidade.conflitos.map((c) => c.descricao).join(" ")}`,
-    );
-  } else {
-    fatos.push(
-      "⚠️ Não foi possível checar a agenda agora. NÃO afirme que a data está livre — diga que vai confirmar e avisar em seguida.",
-    );
-  }
-
-  if (orcamento.upsell) fatos.push(`Sugestão de venda: ${orcamento.upsell}`);
-
-  fatos.push(
-    "⛔ Use exatamente o VALOR OFICIAL acima. Nunca arredonde, nunca invente outro número.",
-  );
-
   return NextResponse.json({
     temData: true,
-    orcamento,
+    ...(orcamento.valido ? { orcamento } : { erro: orcamento.erro }),
     disponibilidade,
     erroAgenda,
-    fatos: fatos.join("\n"),
+    fatos: fatosComData({ orcamento, disponibilidade, conferivel }),
   });
 }
 

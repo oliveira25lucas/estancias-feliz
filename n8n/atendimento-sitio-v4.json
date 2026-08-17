@@ -7,7 +7,8 @@
         "path": "sitio-v4",
         "options": {
           "rawBody": true
-        }
+        },
+        "responseMode": "onReceived"
       },
       "id": "a1000000-0000-4000-8000-000000000001",
       "name": "Webhook Evolution",
@@ -21,7 +22,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Remove tudo que não é mensagem de cliente: eco, grupo, reação,\n// status e protocolo. Sem isso o agente responde a si mesmo.\nconst body = $input.first().json.body;\nif (!body) return [];\n\nconst msg = body.data || body;\nconst key = msg.key || {};\nconst message = msg.message || {};\n\nif (key.fromMe === true) return [];\nif (key.remoteJid && key.remoteJid.includes('@g.us')) return [];\nif (key.remoteJid === 'status@broadcast') return [];\nif (message.reactionMessage) return [];\nif (message.editedMessage || message.protocolMessage) return [];\nif (msg.messageType === 'protocolMessage') return [];\n\nconst telefone = (key.remoteJid || '').replace('@s.whatsapp.net', '');\nif (!telefone) return [];\n\n// ---------- Números sem IA ----------\n// Quem está nesta lista recebe apenas os avisos automáticos do site: a\n// Júlia não responde. A Maurizia é a faxineira, não é cliente — se a IA\n// respondesse aqui, ela levaria orçamento de aluguel como resposta a um\n// \"ok, combinado\".\n//\n// O grupo dos donos não precisa entrar: mensagem de grupo já sai fora\n// acima, na checagem de '@g.us'.\nconst SEM_IA = [\n  '5531975278287', // Maurizia — faxineira\n  '5531992025806', // Renato — piscineiro\n];\nif (SEM_IA.includes(telefone)) return [];\n\nlet texto = '';\nlet tipo = 'texto';\nif (message.conversation) {\n  texto = message.conversation;\n} else if (message.extendedTextMessage) {\n  texto = message.extendedTextMessage.text || '';\n} else if (message.audioMessage) {\n  tipo = 'audio';\n} else if (message.imageMessage) {\n  tipo = 'imagem';\n  texto = message.imageMessage.caption || '';\n} else {\n  return [];\n}\n\nreturn [{\n  json: {\n    telefone,\n    texto: (texto || '').trim(),\n    tipo,\n    nomeWhats: msg.pushName || '',\n    messageId: key.id || '',\n    recebidoEm: new Date().toISOString(),\n  }\n}];"
+        "jsCode": "// Remove tudo que não é mensagem de cliente: eco, grupo, reação,\n// status e protocolo. Sem isso o agente responde a si mesmo.\nconst body = $input.first().json.body;\nif (!body) return [];\n\nconst msg = body.data || body;\nconst key = msg.key || {};\nconst message = msg.message || {};\n\nif (key.fromMe === true) return [];\nif (key.remoteJid && key.remoteJid.includes('@g.us')) return [];\nif (key.remoteJid === 'status@broadcast') return [];\nif (message.reactionMessage) return [];\nif (message.editedMessage || message.protocolMessage) return [];\nif (msg.messageType === 'protocolMessage') return [];\n\nconst telefone = (key.remoteJid || '').replace('@s.whatsapp.net', '');\nif (!telefone) return [];\n\n// ---------- Números sem IA ----------\n// Quem está nesta lista recebe apenas os avisos automáticos do site: a\n// Júlia não responde. A Maurizia é a faxineira, não é cliente — se a IA\n// respondesse aqui, ela levaria orçamento de aluguel como resposta a um\n// \"ok, combinado\".\n//\n// O grupo dos donos não precisa entrar: mensagem de grupo já sai fora\n// acima, na checagem de '@g.us'.\nconst SEM_IA = [\n  '5531975278287', // Maurizia — faxineira\n];\nif (SEM_IA.includes(telefone)) return [];\n\nlet texto = '';\nlet tipo = 'texto';\nif (message.conversation) {\n  texto = message.conversation;\n} else if (message.extendedTextMessage) {\n  texto = message.extendedTextMessage.text || '';\n} else if (message.audioMessage) {\n  tipo = 'audio';\n} else if (message.imageMessage) {\n  tipo = 'imagem';\n  texto = message.imageMessage.caption || '';\n} else {\n  return [];\n}\n\nreturn [{\n  json: {\n    telefone,\n    texto: (texto || '').trim(),\n    tipo,\n    nomeWhats: msg.pushName || '',\n    messageId: key.id || '',\n    recebidoEm: new Date().toISOString(),\n  }\n}];"
       },
       "id": "a1000000-0000-4000-8000-000000000002",
       "name": "Filtrar Mensagem",
@@ -34,6 +35,191 @@
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/mensagens_pendentes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ telefone: $json.telefone, texto: $json.texto, tipo: $json.tipo, message_id: $json.messageId, recebido_em: $json.recebidoEm, processado: false }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000021",
+      "name": "Enfileirar Mensagem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -160,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "FYXApVAie7V8KyCD",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.estanciasfeliz.com.br/chat/sendPresence/sitio-atendimento",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Filtrar Mensagem').first().json.telefone, delay: 25000, presence: 'composing' }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000022",
+      "name": "Mostrar Digitando",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        40,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "dWBtN3XHlRgSdgKU",
+          "name": "Header Auth account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 40,
+        "unit": "seconds"
+      },
+      "id": "a1000000-0000-4000-8000-000000000023",
+      "name": "Esperar 40s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "webhookId": "a1000000-0000-4000-8000-000000000023"
+    },
+    {
+      "parameters": {
+        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/mensagens_pendentes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "telefone",
+              "value": "=eq.{{ $('Filtrar Mensagem').first().json.telefone }}"
+            },
+            {
+              "name": "processado",
+              "value": "eq.false"
+            },
+            {
+              "name": "select",
+              "value": "*"
+            },
+            {
+              "name": "order",
+              "value": "recebido_em.asc"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000024",
+      "name": "Buscar Pendentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "FYXApVAie7V8KyCD",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// O porteiro da rajada: de todas as execucoes disparadas por uma sequencia\n// de mensagens, so UMA responde — a que trouxe a mensagem mais nova.\n//\n// Em 14/08/2026 um cliente mandou cinco mensagens em quinze segundos e\n// levou cinco respostas, cada uma escrita sem saber das outras. Agora cada\n// mensagem e enfileirada, todas esperam, e quem acorda vendo que ja chegou\n// coisa mais nova desiste em silencio. A ultima responde por todas.\nconst eu = $('Filtrar Mensagem').first().json;\n\nconst pendentes = $input.all()\n  .map((i) => i.json)\n  .filter((m) => m && m.id);\n\n// Fila vazia: outra execucao ja levou este lote junto com o dela.\nif (pendentes.length === 0) return [];\n\npendentes.sort((a, b) => {\n  const t = String(a.recebido_em).localeCompare(String(b.recebido_em));\n  // Empate no mesmo milissegundo: o id desempata. Sem criterio estavel,\n  // duas execucoes podiam ordenar a fila diferente uma da outra, cada uma\n  // eleger um \"ultimo\" e as duas responderem — ou nenhuma.\n  return t !== 0 ? t : String(a.id).localeCompare(String(b.id));\n});\n\n// Sobra de execucao morta (n8n reiniciado no meio da espera) fica na fila\n// para sempre. Nao pode voltar a ser respondida semanas depois, no meio de\n// outra conversa — mas sai marcada junto, senao entope a fila do numero.\nconst CORTE_MS = 10 * 60 * 1000;\nconst agora = Date.now();\nconst recentes = pendentes.filter(\n  (m) => agora - new Date(m.recebido_em).getTime() <= CORTE_MS);\n\nif (recentes.length === 0) return [];\n\nconst ultima = recentes[recentes.length - 1];\n\n// Nao sou o mais novo: existe uma execucao ainda esperando que vai\n// responder por mim tambem. Sair daqui e o certo.\nif (ultima.message_id !== eu.messageId) return [];\n\nconst temTexto = recentes.some((m) => (m.texto || '').trim());\n\nconst texto = recentes\n  .map((m) => (m.texto || '').trim() || (m.tipo === 'audio' ? '[audio recebido]' : ''))\n  .filter(Boolean)\n  .join('\\n');\n\nreturn [{\n  json: {\n    telefone: eu.telefone,\n    texto,\n    // So vira \"audio\" quando NAO veio texto nenhum: audio junto de texto\n    // nao pode transformar a resposta num pedido para escrever.\n    tipo: temTexto ? 'texto' : 'audio',\n    nomeWhats: eu.nomeWhats,\n    quantidade: recentes.length,\n    // Marca a fila inteira, inclusive as sobras velhas: elas nao foram\n    // respondidas, mas tambem nao podem ficar rondando.\n    idsFiltro: 'in.(' + pendentes.map((m) => m.id).join(',') + ')',\n  }\n}];\n"
+      },
+      "id": "a1000000-0000-4000-8000-000000000025",
+      "name": "Decidir Turno",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/mensagens_pendentes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.idsFiltro }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ processado: true }) }}",
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000026",
+      "name": "Marcar Processadas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        840,
+        0
+      ],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "FYXApVAie7V8KyCD",
+          "name": "Supabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
         "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/sessoes",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
@@ -42,7 +228,7 @@
           "parameters": [
             {
               "name": "telefone",
-              "value": "=eq.{{ $json.telefone }}"
+              "value": "=eq.{{ $('Decidir Turno').first().json.telefone }}"
             },
             {
               "name": "select",
@@ -61,7 +247,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -160,
+        1040,
         0
       ],
       "credentials": {
@@ -74,14 +260,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Junta o que já sabemos da conversa com a mensagem nova e monta o\n// pedido de extração. A IA aqui só LÊ: não decide preço nem agenda.\nconst entrada = $('Filtrar Mensagem').first().json;\nconst linhas = $input.all();\nconst sessao = (linhas[0] && linhas[0].json && linhas[0].json.telefone) ? linhas[0].json : {};\n\nconst hoje = new Date();\nconst hojeISO = hoje.toISOString().slice(0, 10);\nconst diasSemana = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'];\n\nconst historico = sessao.historico_resumido || '';\n\nconst instrucao = [\n  'Você extrai dados de uma conversa de WhatsApp sobre aluguel de um sítio.',\n  'Responda SOMENTE com JSON válido, sem texto em volta.',\n  '',\n  'Campos:',\n  '  intencao: uma de SAUDACAO, PEDIR_PRECO, INFORMAR_DATA, INFORMAR_PESSOAS,',\n  '            DUVIDA, QUER_VISITAR, QUER_FECHAR, DESPEDIDA, OUTRO',\n  '  data_checkin: YYYY-MM-DD ou null',\n  '  data_checkout: YYYY-MM-DD ou null',\n  '  qtd_pessoas: número ou null',\n  '  nome: nome da pessoa, se ela disser, ou null',\n  '  hidromassagem: true se pedir, senão false',\n  '  pergunta: a dúvida em uma frase, se houver, ou null',\n  '',\n  'Regras de data:',\n  '  Hoje é ' + hojeISO + ' (' + diasSemana[hoje.getDay()] + ').',\n  '  \"fim de semana que vem\" = a próxima sexta até o domingo seguinte.',\n  '  Se a pessoa der só uma data, deixe checkout null.',\n  '  NUNCA invente datas que a pessoa não disse.',\n].join('\\n');\n\nconst contexto = [\n  historico ? 'Conversa até agora:\\n' + historico : 'Primeira mensagem desta pessoa.',\n  '',\n  'Já sabemos:',\n  '  nome: ' + (sessao.nome_cliente || 'não informado'),\n  '  check-in: ' + (sessao.data_checkin || 'não informado'),\n  '  check-out: ' + (sessao.data_checkout || 'não informado'),\n  '  pessoas: ' + (sessao.qtd_pessoas || 'não informado'),\n  '',\n  'Mensagem nova: ' + (entrada.tipo === 'audio' ? '[áudio recebido]' : entrada.texto),\n].join('\\n');\n\nreturn [{\n  json: {\n    telefone: entrada.telefone,\n    texto: entrada.texto,\n    tipo: entrada.tipo,\n    nomeWhats: entrada.nomeWhats,\n    sessao,\n    instrucao,\n    contexto,\n  }\n}];"
+        "jsCode": "// Junta o que ja sabemos da conversa com as mensagens novas e monta o\n// pedido de extracao. A IA aqui so LE: nao decide preco nem agenda.\nconst entrada = $('Decidir Turno').first().json;\nconst linhas = $input.all();\nconst sessao = (linhas[0] && linhas[0].json && linhas[0].json.telefone) ? linhas[0].json : {};\n\n// Hoje em Brasilia. `new Date()` no n8n e UTC: depois das 21h a data ja\n// virou, e \"o fim de semana que vem\" saia um dia deslocado.\nconst agora = new Date();\nconst hojeISO = new Intl.DateTimeFormat('en-CA', {\n  timeZone: 'America/Sao_Paulo',\n  year: 'numeric', month: '2-digit', day: '2-digit',\n}).format(agora);\nconst diaSemana = new Intl.DateTimeFormat('pt-BR', {\n  timeZone: 'America/Sao_Paulo', weekday: 'long',\n}).format(agora);\n\nconst historico = sessao.historico_resumido || '';\n\nconst instrucao = [\n  'Voce extrai dados de uma conversa de WhatsApp sobre aluguel de um sitio.',\n  'Responda SOMENTE com JSON valido, sem texto em volta.',\n  '',\n  'Campos:',\n  '  intencao: uma de SAUDACAO, PEDIR_PRECO, INFORMAR_DATA, INFORMAR_PESSOAS,',\n  '            DUVIDA, QUER_VISITAR, QUER_FECHAR, DESPEDIDA, OUTRO',\n  '  data_checkin: YYYY-MM-DD ou null',\n  '  data_checkout: YYYY-MM-DD ou null',\n  '  qtd_pessoas: numero ou null',\n  '  nome: nome da pessoa, se ela disser, ou null',\n  '  hidromassagem: true se pedir, senao false',\n  '  pergunta: a duvida em uma frase, se houver, ou null',\n  '',\n  'Regras de data:',\n  '  Hoje e ' + hojeISO + ' (' + diaSemana + ').',\n  '  \"fim de semana que vem\" = a proxima sexta ate o domingo seguinte.',\n  '  Se a pessoa der so uma data, deixe checkout null.',\n  '  Se ela der um intervalo (\"de sexta dia 2 ate domingo dia 04/10\"),',\n  '  preencha checkin E checkout.',\n  '  Mes sem ano: use o proximo mes com esse numero a partir de hoje.',\n  '  NUNCA invente datas que a pessoa nao disse.',\n  '',\n  'A pessoa pode ter mandado varias mensagens seguidas: elas vem juntas,',\n  'uma por linha. Extraia o conjunto, nao so a ultima linha.',\n].join('\\n');\n\nconst contexto = [\n  historico ? 'Conversa ate agora:\\n' + historico : 'Primeira mensagem desta pessoa.',\n  '',\n  'Ja sabemos:',\n  '  nome: ' + (sessao.nome_cliente || 'nao informado'),\n  '  check-in: ' + (sessao.data_checkin || 'nao informado'),\n  '  check-out: ' + (sessao.data_checkout || 'nao informado'),\n  '  pessoas: ' + (sessao.qtd_pessoas || 'nao informado'),\n  '',\n  (entrada.quantidade > 1 ? 'Mensagens novas:' : 'Mensagem nova:'),\n  (entrada.tipo === 'audio' ? '[audio recebido]' : entrada.texto),\n].join('\\n');\n\nreturn [{\n  json: {\n    telefone: entrada.telefone,\n    texto: entrada.texto,\n    tipo: entrada.tipo,\n    nomeWhats: entrada.nomeWhats,\n    quantidade: entrada.quantidade || 1,\n    sessao,\n    instrucao,\n    contexto,\n  }\n}];\n"
       },
       "id": "a1000000-0000-4000-8000-000000000004",
       "name": "Montar Extração",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        40,
+        1240,
         0
       ]
     },
@@ -101,7 +287,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        240,
+        1440,
         0
       ],
       "credentials": {
@@ -113,14 +299,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Funde o que a IA extraiu com o que a sessão já guardava. Dado novo\n// vence dado velho; o que não veio, mantém.\nconst base = $('Montar Extração').first().json;\nconst sessao = base.sessao || {};\n\nlet extraido = {};\ntry {\n  const bruto = $input.first().json.choices[0].message.content;\n  extraido = JSON.parse(bruto);\n} catch (e) {\n  extraido = { intencao: 'OUTRO' };\n}\n\nconst escolher = (novo, antigo) =>\n  (novo !== null && novo !== undefined && novo !== '') ? novo : (antigo ?? null);\n\nconst checkin = escolher(extraido.data_checkin, sessao.data_checkin);\nconst checkout = escolher(extraido.data_checkout, sessao.data_checkout);\nconst pessoas = escolher(extraido.qtd_pessoas, sessao.qtd_pessoas);\nconst nome = escolher(extraido.nome, sessao.nome_cliente) || base.nomeWhats || null;\n\n// Só faz sentido consultar preço com data E número de pessoas.\nconst temTudo = Boolean(checkin && checkout && pessoas);\n\nreturn [{\n  json: {\n    telefone: base.telefone,\n    texto: base.texto,\n    tipo: base.tipo,\n    nome,\n    intencao: extraido.intencao || 'OUTRO',\n    pergunta: extraido.pergunta || null,\n    hidromassagem: extraido.hidromassagem === true,\n    data_checkin: checkin,\n    data_checkout: checkout,\n    qtd_pessoas: pessoas,\n    temTudo,\n    historico_resumido: sessao.historico_resumido || '',\n    // O site aceita corpo sem data: nesse caso devolve a tabela de preços.\n    corpoConsulta: {\n      checkin: temTudo ? checkin : '',\n      checkout: temTudo ? checkout : '',\n      pessoas: pessoas || 0,\n      hidromassagem: extraido.hidromassagem === true,\n    },\n  }\n}];"
+        "jsCode": "// Funde o que a IA extraiu com o que a sessao ja guardava. Dado novo\n// vence dado velho; o que nao veio, mantem.\nconst base = $('Montar Extração').first().json;\nconst sessao = base.sessao || {};\n\nlet extraido = {};\ntry {\n  const bruto = $input.first().json.choices[0].message.content;\n  extraido = JSON.parse(bruto);\n} catch (e) {\n  extraido = { intencao: 'OUTRO' };\n}\n\nconst escolher = (novo, antigo) =>\n  (novo !== null && novo !== undefined && novo !== '') ? novo : (antigo ?? null);\n\nconst checkin = escolher(extraido.data_checkin, sessao.data_checkin);\nconst checkout = escolher(extraido.data_checkout, sessao.data_checkout);\nconst pessoas = escolher(extraido.qtd_pessoas, sessao.qtd_pessoas);\nconst nome = escolher(extraido.nome, sessao.nome_cliente) || base.nomeWhats || null;\n\n// A DATA VAI PARA O SITE SEMPRE QUE HOUVER ENTRADA E SAIDA.\n//\n// Antes ela so ia acompanhada do numero de pessoas. Quem perguntava por\n// uma data sem dizer quantas pessoas ia recebia do site \"o cliente ainda\n// nao informou data\" — e a IA, sem nenhum fato sobre aquele periodo,\n// concluia sozinha que estava ocupado. Foi assim que 02 a 04/10/2026, que\n// estava livre, foi negado duas vezes a um cliente em 14/08/2026.\n//\n// Disponibilidade nao depende de quantas pessoas vao. So o preco depende.\nconst temPeriodo = Boolean(checkin && checkout);\nconst temTudo = Boolean(temPeriodo && pessoas);\n\nreturn [{\n  json: {\n    telefone: base.telefone,\n    texto: base.texto,\n    tipo: base.tipo,\n    quantidade: base.quantidade || 1,\n    nome,\n    intencao: extraido.intencao || 'OUTRO',\n    pergunta: extraido.pergunta || null,\n    hidromassagem: extraido.hidromassagem === true,\n    data_checkin: checkin,\n    data_checkout: checkout,\n    qtd_pessoas: pessoas,\n    temTudo,\n    historico_resumido: sessao.historico_resumido || '',\n    // Sem data o site devolve a tabela de precos; com data, devolve tambem\n    // a disponibilidade, mesmo que o preco ainda nao possa ser calculado.\n    corpoConsulta: {\n      checkin: temPeriodo ? checkin : '',\n      checkout: temPeriodo ? checkout : '',\n      pessoas: pessoas || 0,\n      hidromassagem: extraido.hidromassagem === true,\n    },\n  }\n}];\n"
       },
       "id": "a1000000-0000-4000-8000-000000000006",
       "name": "Preparar Consulta",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        440,
+        1640,
         0
       ]
     },
@@ -142,7 +328,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        640,
+        1840,
         0
       ],
       "onError": "continueRegularOutput",
@@ -155,14 +341,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Monta o prompt final. Os \"fatos\" vêm prontos do site — preço e\n// disponibilidade — e a IA só pode escrever em cima deles.\nconst dados = $('Preparar Consulta').first().json;\nconst resposta = $input.first().json;\nconst fatos = resposta.fatos || 'Não foi possível obter preço nem disponibilidade agora.';\n\nconst persona = [\n  'Você é a Júlia, atendente do Sítio Estâncias Feliz, em Sarzedo/MG.',\n  'Mineira, simpática, direta. Escreve como gente, não como robô.',\n  '',\n  '## REGRA ABSOLUTA',\n  'Os FATOS abaixo vêm do sistema e são a única verdade sobre preço e',\n  'disponibilidade. Nunca invente valor, nunca arredonde, nunca afirme que',\n  'uma data está livre se os fatos não disserem isso.',\n  '',\n  '## COMO ESCREVER',\n  '- No máximo 90 palavras. Cliente não lê textão.',\n  '- Use o nome da pessoa quando souber.',\n  '- Venda a experiência: piscina com cascata, churrasqueira, a família reunida.',\n  '- Termine com uma pergunta que leve ao próximo passo.',\n  '- Nada de markdown, nada de asteriscos. É WhatsApp.',\n  '',\n  '## SOBRE O SÍTIO',\n  '- Rod. MG-040, Km 30, Zona Rural, Sarzedo/MG, CEP 32450-000. A 30 km de BH.',\n  '- Referência: Floricultura Sarzedo.',\n  '- 6 quartos (1 suíte). Espaço para 25 pessoas dormirem.',\n  '- 3 banheiros completos, 2 vestiários (3 vasos e 1 chuveiro cada) e 2 lavabos.',\n  '- Wi-Fi via Starlink: internet rápida mesmo na zona rural.',\n  '- Salão de festas COBERTO (52 cadeiras, 15 mesas), churrasqueira, sinuca.',\n  '- Uma quadra, que serve para vôlei e para peteca.',\n  '- Piscina NÃO aquecida, 1,40m a 1,90m, com cascata.',\n  '  A cascata funciona das 9h-12h e das 14h-17h — só diga se perguntarem.',\n  '- Cozinha completa. Fogão industrial só para eventos acima de 30 pessoas.',\n  '- NÃO fornecemos: travesseiro, roupa de cama, edredom, cobertor, toalha.',\n  '- Check-in: 8h, todos os dias. Check-out: 16h. Horários fixos.',\n  '- Pagamento: 50% de sinal no contrato, 50% no check-in, mais a caução.',\n  '- Visitas: agendadas antes do contrato. Encaminhe para o Lucas.',\n].join('\\n');\n\nconst pedido = [\n  '## FATOS DO SISTEMA (única fonte de preço e disponibilidade)',\n  fatos,\n  '',\n  '## CONTEXTO',\n  'Nome: ' + (dados.nome || 'ainda não sei'),\n  'Intenção detectada: ' + dados.intencao,\n  dados.pergunta ? 'Dúvida: ' + dados.pergunta : '',\n  dados.historico_resumido ? '\\nConversa até agora:\\n' + dados.historico_resumido : '',\n  '',\n  'Mensagem do cliente: ' + (dados.tipo === 'audio'\n    ? '[mandou um áudio; peça gentilmente para escrever]'\n    : dados.texto),\n  '',\n  'Escreva a resposta da Júlia.',\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { persona, pedido, dados } }];"
+        "jsCode": "// Monta o prompt final. Os \"fatos\" vem prontos do site — preco e\n// disponibilidade — e a IA so pode escrever em cima deles.\nconst dados = $('Preparar Consulta').first().json;\nconst resposta = $input.first().json;\nconst fatos = resposta.fatos || 'Nao foi possivel obter preco nem disponibilidade agora.';\n\nconst persona = [\n  'Você é a Júlia, atendente do Sítio Estâncias Feliz, em Sarzedo/MG.',\n  'Mineira, simpática, direta. Escreve como gente, não como robô.',\n  '',\n  '## REGRA ABSOLUTA',\n  'Os FATOS abaixo vêm do sistema e são a única verdade sobre preço e',\n  'disponibilidade. Nunca invente valor, nunca arredonde.',\n  '',\n  'Sobre DATA, nos dois sentidos:',\n  '- Só diga que uma data está LIVRE se os fatos disserem isso.',\n  '- Só diga que uma data está OCUPADA se os fatos disserem isso.',\n  '- Se os fatos não falarem da data que o cliente pediu, não chute para',\n  '  nenhum lado: peça o que falta para conferir e diga que já confirma.',\n  '- Uma lista de datas livres NÃO é a agenda inteira. O que não está nela',\n  '  não está ocupado: só não foi conferido ainda.',\n  '',\n  '## COMO ESCREVER',\n  '- No máximo 90 palavras. Cliente não lê textão.',\n  '- UMA mensagem só. O cliente pode ter mandado várias seguidas e elas',\n  '  chegam juntas aqui — responda tudo de uma vez, sem repetir saudação',\n  '  e sem responder linha por linha.',\n  '- Se já houver conversa antes, não se apresente de novo.',\n  '- Use o nome da pessoa quando souber.',\n  '- Venda a experiência: piscina com cascata, churrasqueira, a família reunida.',\n  '- Termine com uma pergunta que leve ao próximo passo.',\n  '- Nada de markdown, nada de asteriscos. É WhatsApp.',\n  '',\n  '## SOBRE O SÍTIO',\n  '- Rod. MG-040, Km 30, Zona Rural, Sarzedo/MG, CEP 32450-000. A 30 km de BH.',\n  '- Referência: Floricultura Sarzedo.',\n  '- 6 quartos (1 suíte). Espaço para 25 pessoas dormirem.',\n  '- 3 banheiros completos, 2 vestiários (3 vasos e 1 chuveiro cada) e 2 lavabos.',\n  '- Wi-Fi via Starlink: internet rápida mesmo na zona rural.',\n  '- Salão de festas COBERTO (52 cadeiras, 15 mesas), churrasqueira, sinuca.',\n  '- Uma quadra, que serve para vôlei e para peteca.',\n  '- Piscina NÃO aquecida, 1,40m a 1,90m, com cascata.',\n  '  A cascata funciona das 9h-12h e das 14h-17h — só diga se perguntarem.',\n  '- Cozinha completa. Fogão industrial só para eventos acima de 30 pessoas.',\n  '- NÃO fornecemos: travesseiro, roupa de cama, edredom, cobertor, toalha.',\n  '- Check-in: 8h, todos os dias. Check-out: 16h. Horários fixos.',\n  '- Pagamento: 50% de sinal no contrato, 50% no check-in, mais a caução.',\n  '- Visitas: agendadas antes do contrato. Encaminhe para o Lucas.',\n].join('\\n');\n\nconst varias = (dados.quantidade || 1) > 1;\n\nconst pedido = [\n  '## FATOS DO SISTEMA (única fonte de preço e disponibilidade)',\n  fatos,\n  '',\n  '## CONTEXTO',\n  'Nome: ' + (dados.nome || 'ainda não sei'),\n  'Intenção detectada: ' + dados.intencao,\n  dados.pergunta ? 'Dúvida: ' + dados.pergunta : '',\n  dados.historico_resumido ? '\\nConversa até agora:\\n' + dados.historico_resumido : '',\n  '',\n  (varias\n    ? 'O cliente mandou ' + dados.quantidade + ' mensagens seguidas. Responda TODAS numa mensagem só:'\n    : 'Mensagem do cliente:'),\n  (dados.tipo === 'audio'\n    ? '[mandou um áudio; peça gentilmente para escrever]'\n    : dados.texto),\n  '',\n  'Escreva a resposta da Júlia.',\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { persona, pedido, dados } }];\n"
       },
       "id": "a1000000-0000-4000-8000-000000000008",
       "name": "Montar Resposta",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        840,
+        2040,
         0
       ]
     },
@@ -182,7 +368,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1040,
+        2240,
         0
       ],
       "credentials": {
@@ -201,7 +387,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1240,
+        2440,
         0
       ]
     },
@@ -221,7 +407,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1440,
+        2640,
         -100
       ],
       "credentials": {
@@ -234,7 +420,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/sessoes",
+        "url": "https://jmundnnugyqqwahugjxt.supabase.co/rest/v1/sessoes?on_conflict=telefone",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpCustomAuth",
         "sendHeaders": true,
@@ -260,7 +446,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1440,
+        2640,
         100
       ],
       "credentials": {
@@ -272,8 +458,8 @@
     },
     {
       "parameters": {
-        "content": "## Atendimento Sítio v4\n\n**O site é o cérebro.** O nó `Consultar Site` chama\n`/api/consultar` e recebe preço e disponibilidade prontos.\nA IA só redige em cima desses fatos.\n\n### O que mudou em relação à v3\n- Saiu o Google Calendar (vivia desconectando). A agenda agora\n  mora no Supabase e é editável pelo painel do site.\n- Saiu todo cálculo de preço em código. Regra de preço existe\n  num lugar só: `src/lib/pricing.ts` no site.\n- 11 nós no lugar de 35.\n\n### Antes de ativar\n1. O site precisa estar publicado em estanciasfeliz.com.br.\n2. O token do site já está na credencial\n   \"Site Estancias Feliz (x-api-token)\".\n3. Apontar o webhook da Evolution para `/webhook/sitio-v4`.\n4. Desativar o workflow v3 para os dois não responderem juntos.\n\n### Avisos automáticos (quem manda é o site)\nO site avisa o grupo dos donos e a faxineira quando uma reserva\nentra ou sai de CONFIRMADA, e 7 dias antes da entrada. O texto\nmora em `src/lib/notificacoes.ts`, não aqui — não duplicar.\n\nO nó `Filtrar Mensagem` tem a lista `SEM_IA`: números que\nrecebem aviso mas NÃO são atendidos pela Júlia (a faxineira).\nGrupo já era ignorado por ser `@g.us`.",
-        "height": 620,
+        "content": "## Atendimento Sítio v4\n\n**O site é o cérebro.** O nó `Consultar Site` chama\n`/api/consultar` e recebe preço e disponibilidade prontos.\nA IA só redige em cima desses fatos.\n\n### A espera de 40 segundos\nCada mensagem que chega é gravada em `mensagens_pendentes` e\na execução dorme 40s. Ao acordar, `Decidir Turno` olha a fila:\nquem não trouxe a mensagem mais nova **desiste**. A última\nresponde por todas, numa mensagem só.\n\nSem isso, quem escreve em rajada leva uma resposta por linha —\nfoi o que aconteceu em 14/08/2026: cinco mensagens em quinze\nsegundos, cinco respostas desencontradas.\n\nO `Webhook Evolution` responde na hora (`onReceived`): deixar a\nEvolution esperando 40s a faria repetir a entrega.\n\n### Consertos de 17/08/2026\n- `Preparar Consulta` manda a data ao site SEMPRE que houver\n  entrada e saída. Antes só mandava junto com o número de\n  pessoas, e sem fatos sobre a data a IA chutava \"ocupado\".\n- `Salvar Sessão` usa `?on_conflict=telefone`. Sem isso o\n  PostgREST devolvia 409 e a sessão nunca era gravada: a Júlia\n  recomeçava do zero a cada mensagem.\n\n### Avisos automáticos (quem manda é o site)\nO site avisa o grupo dos donos e a faxineira quando uma reserva\nentra ou sai de CONFIRMADA, e 7 dias antes da entrada. O texto\nmora em `src/lib/notificacoes.ts`, não aqui — não duplicar.\n\nO nó `Filtrar Mensagem` tem a lista `SEM_IA`: números que\nrecebem aviso mas NÃO são atendidos pela Júlia (a faxineira).\nGrupo já era ignorado por ser `@g.us`.",
+        "height": 900,
         "width": 460,
         "color": 4
       },
@@ -283,7 +469,7 @@
       "typeVersion": 1,
       "position": [
         -560,
-        -460
+        -560
       ]
     }
   ],
@@ -300,6 +486,72 @@
       ]
     },
     "Filtrar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Enfileirar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enfileirar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Mostrar Digitando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mostrar Digitando": {
+      "main": [
+        [
+          {
+            "node": "Esperar 40s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar 40s": {
+      "main": [
+        [
+          {
+            "node": "Buscar Pendentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Pendentes": {
+      "main": [
+        [
+          {
+            "node": "Decidir Turno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decidir Turno": {
+      "main": [
+        [
+          {
+            "node": "Marcar Processadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Marcar Processadas": {
       "main": [
         [
           {
@@ -405,6 +657,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
   }
 }
