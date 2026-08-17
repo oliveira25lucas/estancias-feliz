@@ -328,6 +328,14 @@ curl -H "x-api-token: $API_TOKEN" \
   `@g.us`; os números da Maurizia e do Renato estão na lista `SEM_IA` do nó
   `Filtrar Mensagem`. Sem isso, um "ok, combinado" viraria conversa de
   orçamento com a IA. Número novo na equipe **precisa** entrar lá também.
+- **O nono dígito é uma armadilha, e ela já mordeu.** O JID brasileiro
+  chega de dois jeitos, conforme o número foi registrado no WhatsApp: com
+  o nono dígito (`5531975278287`) e sem ele (`553175278287`). O da Maurizia
+  chega **sem**, então a lista `SEM_IA` comparando string crua nunca casou
+  — em 13/08/2026 ela agradeceu o aviso e a Júlia ofereceu data para ela.
+  O filtro agora compara por `chaveTelefone()`: DDI + DDD + os 8 últimos
+  dígitos, iguais nos dois formatos. Os dois formatos convivem no banco
+  (`sessoes`), então nunca compare número de telefone por igualdade.
 - **Mas as respostas deles chegam em algum lugar.** Os avisos saem pela
   instância `sitio-atendimento`, o número do sítio. Com a IA calada, o que
   a equipe responder fica lá esperando alguém ler — vale abrir esse
