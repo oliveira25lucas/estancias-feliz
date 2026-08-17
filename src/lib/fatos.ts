@@ -113,10 +113,18 @@ export function fatosComData(args: {
   // respondida, e é a resposta que o cliente está esperando.
   if (!orcamento.valido) {
     return [
+      // O período vem ANTES da disponibilidade, e não pode faltar: um
+      // "❌ a data não está livre" solto não diz de qual data se trata, e
+      // a IA acaba colando o resultado numa data que o cliente nem pediu.
+      conferivel
+        ? `Período conferido: ${formatarDataBR(orcamento.checkin)} a ${formatarDataBR(orcamento.checkout)}.`
+        : "",
       fatoDisponibilidade(disponibilidade, conferivel),
       `Ainda não dá para calcular o valor: ${orcamento.erro}`,
       "Peça essa informação que falta e NÃO mencione nenhum valor.",
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
 
   const linhas: string[] = [];

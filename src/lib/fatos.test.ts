@@ -56,6 +56,9 @@ test("sem o número de pessoas, a data ainda é respondida", () => {
 
   assert.match(fatos, /a data está LIVRE/);
   assert.match(fatos, /NÃO mencione nenhum valor/);
+  // Sem o período escrito junto, "a data está LIVRE" não diz QUAL data, e a
+  // IA cola o resultado numa data que o cliente nem pediu.
+  assert.match(fatos, /Período conferido: 02\/10\/2026 a 04\/10\/2026/);
 });
 
 test("sem preço e sem agenda, a IA é proibida nos dois sentidos", () => {
