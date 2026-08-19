@@ -78,10 +78,10 @@ mais uma lista de frases proibidas — todas colhidas de conversas reais
 
 Em 18/08/2026 uma cliente perguntou pelo **carnaval de 2027**. O modelo de
 extração respondeu 18 a 22/02/2027 — o Carnaval de 2027 é de 05 a 10/02 —
-e o site, fazendo a conta certa da data errada, devolveu R$ 8.800,00 de
-diária de semana onde o pacote de Carnaval custa R$ 5.500,00. Ela recebeu
-o valor errado duas vezes, e ainda ouviu que "está disponível para o
-carnaval" sem nunca ver uma data escrita.
+e o site, fazendo a conta certa da data errada, cotou diária de semana
+(R$ 6.600,00 e depois R$ 8.800,00) em vez do pacote de Carnaval. A cliente
+ouviu duas vezes que "está disponível para o carnaval" sem nunca ver uma
+data escrita, e o que ela quase reservou era a semana seguinte ao feriado.
 
 Agora `Montar Extração` devolve só o nome (`feriado: "carnaval"`) e deixa
 as datas nulas. A rota `/api/consultar` aceita `feriado` e `ano`, resolve
@@ -406,6 +406,17 @@ curl -H "x-api-token: $API_TOKEN" \
   Na quarta não forma pacote. Carnaval é exceção: sexta à quarta de cinzas.
 - **Feriados municipais** de BH, Sarzedo e Ibirité entram como pacote de
   R$ 3.600 (base 2026).
+- **Cada pacote sabe de que ano é o valor dele.** O número solto em
+  `PACOTES_FERIADO` é de 2026; `{ valor, ano }` diz o contrário. O
+  Carnaval é R$ 8.500 **de 2027** — guardar 8.500 com o ano junto é
+  honesto, guardar R$ 7.727 como "base 2026" seria um número que ninguém
+  reconhece. O reajuste corre a partir do ano declarado.
+
+> ⚠️ **Procedência dos pacotes de feriado.** Só o Carnaval foi conferido
+> com o dono (19/08/2026). Todos os outros vieram da tabela escrita à mão
+> dos workflows `Atendimento Sítio v2` e `v3`, que nunca foi revisada — e
+> que ainda errava a data do Carnaval de 2027 em uma semana. Antes de
+> confiar num desses valores, pergunte ao Lucas.
 - **O feriado também atende pelo nome.** `feriadoPorNome("carnaval", 2027)`
   devolve o bloco e o preço; sem ano, vale a próxima ocorrência que ainda
   não terminou. É por aí que a Júlia responde "carnaval 2027" sem chutar

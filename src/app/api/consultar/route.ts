@@ -29,8 +29,8 @@ export const dynamic = "force-dynamic";
  * A rota também aceita o feriado pelo NOME (`feriado: "carnaval"`), e é
  * ela quem descobre em que dias ele cai. Em 18/08/2026 a extração
  * traduziu "carnaval 2027" para 18 a 22/02/2027 — o certo é 05 a 10/02 —
- * e a Júlia cotou R$ 8.800,00 onde o pacote custa R$ 5.500,00. Data móvel
- * sai da Páscoa, e a Páscoa é conta: quem calcula é `pricing.ts`.
+ * e a Júlia vendeu diária de semana onde havia pacote de feriado. Data
+ * móvel sai da Páscoa, e a Páscoa é conta: quem calcula é `pricing.ts`.
  *
  * Autenticação por token no cabeçalho `x-api-token`.
  */

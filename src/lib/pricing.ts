@@ -28,14 +28,28 @@
 export const ANO_BASE = 2026;
 export const REAJUSTE_ANUAL = 0.1;
 
-/** Quanto multiplicar a tabela de 2026 para chegar no ano pedido. */
-export function fatorAno(ano: number): number {
-  return Math.pow(1 + REAJUSTE_ANUAL, Math.max(0, ano - ANO_BASE));
+/**
+ * Quanto multiplicar um valor para chegar no ano pedido.
+ *
+ * `anoDoValor` existe porque nem todo preço nasceu em 2026: o pacote de
+ * Carnaval foi conferido com o dono em 19/08/2026 e o número que ele deu
+ * é o de **2027**. Guardar 8.500 com o ano junto é honesto; guardar
+ * 7.727 como "base 2026" seria um número que ninguém reconhece.
+ *
+ * Ano anterior ao do valor não desconta: o reajuste sobe, não desce, e
+ * data no passado não se aluga.
+ */
+export function fatorAno(ano: number, anoDoValor: number = ANO_BASE): number {
+  return Math.pow(1 + REAJUSTE_ANUAL, Math.max(0, ano - anoDoValor));
 }
 
 /** Aplica o reajuste e arredonda para a dezena, para não gerar centavos. */
-export function comReajuste(valorBase: number, ano: number): number {
-  return Math.round((valorBase * fatorAno(ano)) / 10) * 10;
+export function comReajuste(
+  valorBase: number,
+  ano: number,
+  anoDoValor: number = ANO_BASE,
+): number {
+  return Math.round((valorBase * fatorAno(ano, anoDoValor)) / 10) * 10;
 }
 
 // ============================================================
@@ -65,14 +79,25 @@ export const EVENTO_BASE = [
 ];
 
 /**
- * Pacotes de feriado, em reais de 2026.
+ * Pacotes de feriado.
+ *
+ * Número solto = reais de 2026. `{ valor, ano }` = o valor daquele ano, e
+ * o reajuste corre a partir dele.
+ *
+ * ⚠️ Procedência: só o Carnaval foi conferido com o dono (19/08/2026 —
+ * R$ 8.500 em 2027, de sexta a quarta). Todos os outros foram herdados da
+ * tabela escrita à mão dos workflows `Atendimento Sítio v2` e `v3`, que
+ * nunca passou por revisão e ainda errava a data do Carnaval de 2027 em
+ * uma semana. Antes de confiar num destes, pergunte ao Lucas.
  *
  * Inclui os municipais da região de onde vem a maior parte dos hóspedes:
  * Belo Horizonte (Assunção e Imaculada Conceição), Sarzedo e Ibirité.
  */
-const PACOTES_FERIADO: Record<string, number> = {
+type Pacote = number | { valor: number; ano: number };
+
+const PACOTES_FERIADO: Record<string, Pacote> = {
   // Nacionais e móveis
-  Carnaval: 5000,
+  Carnaval: { valor: 8500, ano: 2027 }, // conferido com o dono em 19/08/2026
   "Semana Santa": 4500,
   Tiradentes: 5000,
   "Dia do Trabalho": 3600,
@@ -272,6 +297,15 @@ const BLOCOS_FIXOS: Record<string, (data: Date, ano: number) => Bloco> = {
   }),
 };
 
+/** O valor do pacote no ano pedido, reajustado a partir do ano dele. */
+export function precoDoPacote(nome: string, ano: number): number {
+  const p = PACOTES_FERIADO[nome];
+  if (p === undefined) return 0;
+  return typeof p === "number"
+    ? comReajuste(p, ano)
+    : comReajuste(p.valor, ano, p.ano);
+}
+
 /** Todos os feriados de um ano, com bloco e preço já reajustado. */
 export function feriadosDoAno(ano: number): Feriado[] {
   const pascoa = domingoDePascoa(ano);
@@ -315,7 +349,7 @@ export function feriadosDoAno(ano: number): Feriado[] {
       data: paraISO(data),
       inicio: paraISO(bloco.inicio),
       fim: paraISO(bloco.fim),
-      preco: comReajuste(PACOTES_FERIADO[nome], ano),
+      preco: precoDoPacote(nome, ano),
       ...(alternativo ? { inicioAlternativo: paraISO(alternativo) } : {}),
     });
   }
@@ -360,8 +394,9 @@ export function feriadoNoPeriodo(
  * Existe por causa de 18/08/2026. Uma cliente perguntou "está disponível
  * para carnaval 2027" e o modelo de extração respondeu 18 a 22/02/2027 —
  * o Carnaval de 2027 é de 05 a 10/02. Com as datas erradas o site fez a
- * conta certa da data errada, e a Júlia cotou R$ 8.800,00 de diária de
- * semana onde o pacote de Carnaval custa R$ 5.500,00.
+ * conta certa da data errada, e a Júlia vendeu diária de semana onde
+ * havia pacote de feriado: a cliente quase reservou a semana seguinte ao
+ * carnaval achando que era o carnaval.
  *
  * O modelo não errou por descuido: ele nunca soube. Data móvel sai da
  * Páscoa, e a Páscoa é o algoritmo que já está aqui em cima. **Nome de

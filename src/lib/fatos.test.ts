@@ -166,8 +166,9 @@ test("pedido pelo nome do feriado, os fatos dizem quais são as datas", () => {
   assert.match(fatos, /O cliente falou em "carnaval"/);
   assert.match(fatos, /05\/02\/2027 a 10\/02\/2027/);
   assert.match(fatos, /DIGA ESSAS DATAS/);
-  assert.match(fatos, /R\$\s5\.500,00/);
-  // E nunca o valor da data que o modelo tinha inventado.
+  assert.match(fatos, /R\$\s8\.500,00/);
+  // E nunca o valor das datas que o modelo tinha inventado: 18 a
+  // 22/02/2027 sairiam por R$ 8.800,00 de diária de semana.
   assert.doesNotMatch(fatos, /8\.800/);
 });
 

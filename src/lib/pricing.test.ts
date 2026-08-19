@@ -289,16 +289,27 @@ test("Réveillon custa R$ 12.500 e atravessa o ano", () => {
 });
 
 test("em feriado com grupo grande, cobra-se o maior entre pacote e evento", () => {
-  // Carnaval 2026 fecha em R$ 5.000, mas 150 pessoas por 5 diárias
-  // dão 3750 + 1000 + 4x700 = 7550. Vale o maior.
+  // Independência 2026 cai na segunda: bloco sexta 04 a segunda 07, 3
+  // diárias, pacote R$ 4.500. Mas 150 pessoas por 3 diárias dão
+  // 3750 + 1000 + 2x700 = 6150. Vale o maior.
   const r = calcularOrcamento({
-    checkin: "2026-02-13",
-    checkout: "2026-02-18",
+    checkin: "2026-09-04",
+    checkout: "2026-09-07",
     pessoas: 150,
   });
-  assert.equal(r.dias, 5);
-  assert.equal(r.valorTotal, 7550);
-  assert.match(r.tipoCalculo, /Carnaval/);
+  assert.equal(r.dias, 3);
+  assert.equal(r.valorTotal, 6150);
+  assert.match(r.tipoCalculo, /Evento para 150 pessoas/);
+});
+
+test("grupo pequeno no mesmo feriado continua pagando o pacote", () => {
+  const r = calcularOrcamento({
+    checkin: "2026-09-04",
+    checkout: "2026-09-07",
+    pessoas: 20,
+  });
+  assert.equal(r.valorTotal, 4500);
+  assert.match(r.tipoCalculo, /Pacote Independência/);
 });
 
 // ============================================================
@@ -413,8 +424,9 @@ test("as noites extras também sofrem o reajuste anual", () => {
 /**
  * Estes casos travam o erro de 18/08/2026: uma cliente perguntou por
  * "carnaval 2027" e o modelo de extração devolveu 18 a 22/02/2027. O
- * Carnaval de 2027 é de 05 a 10/02, e a diferença entre os dois na conta
- * é de R$ 8.800,00 contra R$ 5.500,00.
+ * Carnaval de 2027 é de 05 a 10/02 — uma semana antes — e o que saiu foi
+ * diária de semana (R$ 8.800,00) no lugar do pacote (R$ 8.500,00). Os
+ * valores quase se encontram por acaso; o que estava errado era a data.
  */
 
 test("carnaval de 2027 é de 05 a 10/02, e não o que o modelo achar", () => {
@@ -423,17 +435,17 @@ test("carnaval de 2027 é de 05 a 10/02, e não o que o modelo achar", () => {
   assert.equal(f?.data, "2027-02-09"); // terça
   assert.equal(f?.inicio, "2027-02-05"); // sexta
   assert.equal(f?.fim, "2027-02-10"); // quarta de cinzas
-  assert.equal(f?.preco, comReajuste(5000, 2027));
+  assert.equal(f?.preco, 8500); // conferido com o dono em 19/08/2026
 });
 
-test("o bloco do carnaval de 2027 custa R$ 5.500, não R$ 8.800", () => {
+test("o carnaval de 2027 é pacote de R$ 8.500, não diária de semana", () => {
   const f = feriadoPorNome("carnaval", 2027)!;
   const certo = calcularOrcamento({
     checkin: f.inicio,
     checkout: f.fim,
     pessoas: 21,
   });
-  assert.equal(certo.valorTotal, 5500);
+  assert.equal(certo.valorTotal, 8500);
   assert.match(certo.tipoCalculo, /Pacote Carnaval/);
 
   // O que a Júlia chegou a cotar, com as datas que o modelo inventou.
