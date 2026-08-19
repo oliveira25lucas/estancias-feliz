@@ -122,3 +122,16 @@ Antes de qualquer `PUT /api/v1/workflows/DUVUbni2SWf8TBj8`:
    em `(async function(){ ... })` e rode `node --check`.
 
 Mande só `name`, `nodes`, `connections`, `settings`; outros campos dão 400.
+
+# Como a Júlia escreve
+
+O prompt dela é o nó `Montar Resposta`, e a resposta sai em **balões**
+(`Preparar Envio` quebra, `Splitar Balões` distribui, `Enviar WhatsApp`
+manda com `batchSize: 1`). Antes de reescrever qualquer coisa aí, leia
+"Como a Júlia escreve" no README.
+
+A regra que se aprendeu caro, duas vezes: **o que dá para calcular não se
+pede ao modelo.** O ano da data, o que ainda falta perguntar, se já houve
+conversa e em que dia cai um feriado são todos decididos em código — o
+modelo só redige. Nome de feriado em especial: ele devolve `feriado:
+"carnaval"` e o site resolve o bloco.

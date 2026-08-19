@@ -25,6 +25,8 @@ import type { Disponibilidade } from "./agenda.ts";
 import {
   formatarBRL,
   formatarDataBR,
+  nomeDiaSemana,
+  type Feriado,
   type LinhaTabela,
   type OrcamentoResultado,
 } from "./pricing.ts";
@@ -62,6 +64,26 @@ export function fatoDisponibilidade(
   return (
     "⚠️ DISPONIBILIDADE NÃO CONFERIDA: a agenda não respondeu agora. " +
     "NÃO diga que a data está livre NEM que está ocupada — diga que vai confirmar e avisar em seguida."
+  );
+}
+
+/**
+ * A frase de quando o cliente pediu o feriado pelo nome.
+ *
+ * Ela existe para ser dita em voz alta ao cliente. Em 18/08/2026 uma
+ * cliente perguntou por "carnaval 2027" e recebeu preço de 18 a 22/02 —
+ * datas que ninguém tinha falado e que não são o Carnaval. Quem pergunta
+ * pelo nome do feriado quase nunca sabe em que dia ele cai; dizer as
+ * datas é metade da resposta.
+ */
+export function fatoFeriadoPedido(termo: string, feriado: Feriado): string {
+  const ano = feriado.data.slice(0, 4);
+  return (
+    `📅 O cliente falou em "${termo}", não em datas. ` +
+    `${feriado.nome} de ${ano} cai em ${nomeDiaSemana(feriado.data).toLowerCase()}, ` +
+    `${formatarDataBR(feriado.data)}, e o sítio é alugado fechado no bloco de ` +
+    `${formatarDataBR(feriado.inicio)} a ${formatarDataBR(feriado.fim)}. ` +
+    `DIGA ESSAS DATAS ao cliente — ele provavelmente não sabe quais são.`
   );
 }
 
@@ -106,13 +128,20 @@ export function fatosComData(args: {
   orcamento: OrcamentoResultado;
   disponibilidade: Disponibilidade | null;
   conferivel: boolean;
+  /** Preenchido quando o período veio do nome de um feriado, não de datas. */
+  feriadoPedido?: { termo: string; feriado: Feriado } | null;
 }): string {
-  const { orcamento, disponibilidade, conferivel } = args;
+  const { orcamento, disponibilidade, conferivel, feriadoPedido } = args;
+
+  const cabecalho = feriadoPedido
+    ? [fatoFeriadoPedido(feriadoPedido.termo, feriadoPedido.feriado)]
+    : [];
 
   // Faltando o número de pessoas, o preço não sai — mas a data já pode ser
   // respondida, e é a resposta que o cliente está esperando.
   if (!orcamento.valido) {
     return [
+      ...cabecalho,
       // O período vem ANTES da disponibilidade, e não pode faltar: um
       // "❌ a data não está livre" solto não diz de qual data se trata, e
       // a IA acaba colando o resultado numa data que o cliente nem pediu.
@@ -127,7 +156,7 @@ export function fatosComData(args: {
       .join("\n");
   }
 
-  const linhas: string[] = [];
+  const linhas: string[] = [...cabecalho];
 
   if (orcamento.pacoteObrigatorio) {
     linhas.push(
@@ -138,6 +167,12 @@ export function fatosComData(args: {
         `O cliente também pode entrar em ${formatarDataBR(orcamento.pacoteObrigatorio.inicioAlternativo)}, pagando o mesmo pacote.`,
       );
     }
+    // Chegar depois não abate nada: o bloco é fechado e já está pago.
+    // Dizer isso é honesto e ainda melhora a estadia de quem entra tarde.
+    linhas.push(
+      `Entrar depois do primeiro dia do bloco NÃO reduz o valor — vale avisar que ` +
+        `ele pode chegar já em ${formatarDataBR(orcamento.checkin)} sem pagar nada a mais.`,
+    );
   }
 
   linhas.push(

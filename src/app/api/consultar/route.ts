@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { calcularOrcamento, tabelaDePrecos } from "@/lib/pricing";
+import {
+  calcularOrcamento,
+  feriadoPorNome,
+  tabelaDePrecos,
+} from "@/lib/pricing";
 import { verificarDisponibilidade, proximosFinsDeSemanaLivres } from "@/lib/agenda";
 import {
   fatosComData,
@@ -21,6 +25,12 @@ export const dynamic = "force-dynamic";
  *
  * O campo `fatos` é feito para ir direto no prompt: são as afirmações
  * que a IA pode fazer, e só elas.
+ *
+ * A rota também aceita o feriado pelo NOME (`feriado: "carnaval"`), e é
+ * ela quem descobre em que dias ele cai. Em 18/08/2026 a extração
+ * traduziu "carnaval 2027" para 18 a 22/02/2027 — o certo é 05 a 10/02 —
+ * e a Júlia cotou R$ 8.800,00 onde o pacote custa R$ 5.500,00. Data móvel
+ * sai da Páscoa, e a Páscoa é conta: quem calcula é `pricing.ts`.
  *
  * Autenticação por token no cabeçalho `x-api-token`.
  */
@@ -47,11 +57,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ erro: "JSON inválido." }, { status: 400 });
   }
 
-  const checkin = typeof corpo.checkin === "string" ? corpo.checkin.trim() : "";
-  const checkout =
-    typeof corpo.checkout === "string" ? corpo.checkout.trim() : "";
   const pessoas = Number(corpo.pessoas) || 0;
   const hidromassagem = corpo.hidromassagem === true;
+
+  // ---- O feriado que o cliente pediu pelo nome ----
+  // O agente manda o termo cru ("carnaval", "réveillon", "semana santa") e
+  // o ano SÓ se a pessoa tiver dito. Quem transforma isso em datas é aqui.
+  const termoFeriado =
+    typeof corpo.feriado === "string" ? corpo.feriado.trim() : "";
+  const anoDito = Number(corpo.ano) || null;
+  const feriado = termoFeriado ? feriadoPorNome(termoFeriado, anoDito) : undefined;
+  const feriadoPedido = feriado ? { termo: termoFeriado, feriado } : null;
+
+  // As datas do cliente mandam quando existem; o nome do feriado só
+  // preenche o silêncio. Quem diz "carnaval, de sábado a quarta" continua
+  // caindo no bloco fechado pela regra de `calcularOrcamento`.
+  const checkin =
+    (typeof corpo.checkin === "string" ? corpo.checkin.trim() : "") ||
+    feriado?.inicio ||
+    "";
+  const checkout =
+    (typeof corpo.checkout === "string" ? corpo.checkout.trim() : "") ||
+    feriado?.fim ||
+    "";
 
   // ---- Sem data: devolve a tabela de vitrine ----
   if (!checkin || !checkout) {
@@ -115,7 +143,13 @@ export async function POST(request: Request) {
     ...(orcamento.valido ? { orcamento } : { erro: orcamento.erro }),
     disponibilidade,
     erroAgenda,
-    fatos: fatosComData({ orcamento, disponibilidade, conferivel }),
+    feriado: feriado ?? null,
+    fatos: fatosComData({
+      orcamento,
+      disponibilidade,
+      conferivel,
+      feriadoPedido,
+    }),
   });
 }
 
@@ -134,6 +168,8 @@ export async function GET(request: Request) {
         checkout: url.searchParams.get("checkout") ?? "",
         pessoas: Number(url.searchParams.get("pessoas") ?? 0),
         hidromassagem: url.searchParams.get("hidromassagem") === "true",
+        feriado: url.searchParams.get("feriado") ?? "",
+        ano: Number(url.searchParams.get("ano") ?? 0),
       }),
     }),
   );

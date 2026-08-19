@@ -51,6 +51,47 @@ Por que assim:
 - **Adeus Google Calendar.** Ele vivia perdendo a autenticação e derrubava
   o atendimento. A agenda agora é o painel `/admin`, no mesmo banco.
 
+### Como a Júlia escreve
+
+Ela responde em **balões**, não em textão. O prompt pede de 1 a 3 blocos
+curtos separados por linha em branco; `Preparar Envio` quebra nesses
+blocos e `Splitar Balões` manda um item por balão para o `Enviar
+WhatsApp`, que roda com `batchSize: 1` — sem isso as mensagens chegam
+fora de ordem.
+
+O prompt mora no nó `Montar Resposta`, e três coisas nele **não** são
+pedidas à IA: são calculadas ali, porque pedir educadamente já falhou.
+
+- **Se é a primeira mensagem.** Havendo histórico, o cabeçalho manda não
+  cumprimentar de novo. Em 18/08/2026 a Júlia abriu quatro mensagens
+  seguidas com "Oi, Eliane!".
+- **O que ainda falta.** O bloco FOCO diz se falta a data, se falta o
+  número de pessoas, ou se já tem os dois e é hora de conduzir ao próximo
+  passo. Assim ela não repergunta o que a pessoa acabou de responder.
+- **O período em dia e mês**, já formatado do jeito que precisa ser dito.
+
+O resto são regras de estilo com o exemplo errado e o certo lado a lado,
+mais uma lista de frases proibidas — todas colhidas de conversas reais
+("é tudo do bom e do melhor", "estou aqui pra ajudar no que precisar").
+
+### Nome de feriado é conta, não palpite
+
+Em 18/08/2026 uma cliente perguntou pelo **carnaval de 2027**. O modelo de
+extração respondeu 18 a 22/02/2027 — o Carnaval de 2027 é de 05 a 10/02 —
+e o site, fazendo a conta certa da data errada, devolveu R$ 8.800,00 de
+diária de semana onde o pacote de Carnaval custa R$ 5.500,00. Ela recebeu
+o valor errado duas vezes, e ainda ouviu que "está disponível para o
+carnaval" sem nunca ver uma data escrita.
+
+Agora `Montar Extração` devolve só o nome (`feriado: "carnaval"`) e deixa
+as datas nulas. A rota `/api/consultar` aceita `feriado` e `ano`, resolve
+o bloco com `feriadoPorNome()` de `pricing.ts` e escreve as datas nos
+fatos, com ordem explícita de dizê-las ao cliente: quem pergunta pelo
+nome do feriado quase nunca sabe em que dia ele cai.
+
+É a mesma lição do ano da data, que já tinha custado um cliente em
+agosto: **o que dá para calcular não se pede ao modelo.**
+
 ### Trocar o workflow do n8n
 
 O v4 está em `n8n/atendimento-sitio-v4.json` e já foi importado **inativo**.
@@ -365,6 +406,13 @@ curl -H "x-api-token: $API_TOKEN" \
   Na quarta não forma pacote. Carnaval é exceção: sexta à quarta de cinzas.
 - **Feriados municipais** de BH, Sarzedo e Ibirité entram como pacote de
   R$ 3.600 (base 2026).
+- **O feriado também atende pelo nome.** `feriadoPorNome("carnaval", 2027)`
+  devolve o bloco e o preço; sem ano, vale a próxima ocorrência que ainda
+  não terminou. É por aí que a Júlia responde "carnaval 2027" sem chutar
+  data — veja "Nome de feriado é conta, não palpite".
+- **Entrar depois do primeiro dia do bloco não abate nada.** Os fatos
+  dizem isso em voz alta, para a Júlia convidar a pessoa a chegar já no
+  primeiro dia em vez de perder uma diária que ela já pagou.
 
 Os testes em `src/lib/pricing.test.ts` travam tudo isso.
 

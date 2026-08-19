@@ -354,6 +354,120 @@ export function feriadoNoPeriodo(
   return sobrepostos.reduce((maior, f) => (f.preco > maior.preco ? f : maior));
 }
 
+/**
+ * Apelidos com que o cliente chama cada feriado no WhatsApp.
+ *
+ * Existe por causa de 18/08/2026. Uma cliente perguntou "está disponível
+ * para carnaval 2027" e o modelo de extração respondeu 18 a 22/02/2027 —
+ * o Carnaval de 2027 é de 05 a 10/02. Com as datas erradas o site fez a
+ * conta certa da data errada, e a Júlia cotou R$ 8.800,00 de diária de
+ * semana onde o pacote de Carnaval custa R$ 5.500,00.
+ *
+ * O modelo não errou por descuido: ele nunca soube. Data móvel sai da
+ * Páscoa, e a Páscoa é o algoritmo que já está aqui em cima. **Nome de
+ * feriado é conta, não palpite** — a mesma lição do ano da data.
+ */
+const APELIDOS_FERIADO: [string, string][] = [
+  ["carnaval", "Carnaval"],
+  ["carnavais", "Carnaval"],
+  ["terca de carnaval", "Carnaval"],
+  ["feriadao de carnaval", "Carnaval"],
+  ["reveillon", "Réveillon"],
+  ["ano novo", "Réveillon"],
+  ["virada do ano", "Réveillon"],
+  ["passagem de ano", "Réveillon"],
+  ["natal", "Natal"],
+  ["ceia de natal", "Natal"],
+  ["semana santa", "Semana Santa"],
+  ["sexta feira santa", "Semana Santa"],
+  ["sexta-feira santa", "Semana Santa"],
+  ["pascoa", "Semana Santa"],
+  ["feriado da pascoa", "Semana Santa"],
+  ["tiradentes", "Tiradentes"],
+  ["21 de abril", "Tiradentes"],
+  ["dia do trabalho", "Dia do Trabalho"],
+  ["dia do trabalhador", "Dia do Trabalho"],
+  ["primeiro de maio", "Dia do Trabalho"],
+  ["1 de maio", "Dia do Trabalho"],
+  ["corpus christi", "Corpus Christi"],
+  ["independencia", "Independência"],
+  ["7 de setembro", "Independência"],
+  ["sete de setembro", "Independência"],
+  ["aparecida", "N. S. Aparecida"],
+  ["nossa senhora aparecida", "N. S. Aparecida"],
+  ["12 de outubro", "N. S. Aparecida"],
+  ["dia das criancas", "N. S. Aparecida"],
+  ["finados", "Finados"],
+  ["dia de finados", "Finados"],
+  ["2 de novembro", "Finados"],
+  ["consciencia negra", "Consciência Negra"],
+  ["20 de novembro", "Consciência Negra"],
+  ["imaculada conceicao", "Imaculada Conceição"],
+  ["8 de dezembro", "Imaculada Conceição"],
+  ["assuncao", "N. S. da Assunção"],
+  ["nossa senhora da assuncao", "N. S. da Assunção"],
+  ["15 de agosto", "N. S. da Assunção"],
+  ["nossa senhora das gracas", "N. S. das Graças"],
+  ["27 de novembro", "N. S. das Graças"],
+  ["aniversario de ibirite", "Aniversário de Ibirité"],
+  ["aniversario de sarzedo", "Aniversário de Sarzedo"],
+];
+
+/** Minúsculas, sem acento e sem pontuação — para casar o que o cliente digitou. */
+function normalizar(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Acha o feriado pelo nome que o cliente falou.
+ *
+ * Sem ano, vale a **próxima** ocorrência que ainda não terminou — quem
+ * pergunta por "carnaval" em agosto quer o do ano que vem, não o que já
+ * passou. É a mesma regra que o agente usa para dia e mês soltos.
+ *
+ * Devolve `undefined` quando o termo não é feriado nenhum; nesse caso o
+ * agente segue pedindo as datas, como sempre fez.
+ */
+export function feriadoPorNome(
+  termo: string,
+  ano?: number | null,
+  // Em Brasília, não em UTC: depois das 21h a data já virou lá, e o
+  // último dia de um bloco sairia como passado.
+  hoje: string = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date()),
+): Feriado | undefined {
+  const alvo = normalizar(termo || "");
+  if (!alvo) return undefined;
+
+  // O apelido mais longo primeiro: "sexta feira santa" antes de "santa",
+  // "aniversario de sarzedo" antes de "sarzedo".
+  const nome = [...APELIDOS_FERIADO]
+    .sort((a, b) => b[0].length - a[0].length)
+    .find(([apelido]) => alvo.includes(apelido))?.[1];
+
+  if (!nome) return undefined;
+
+  if (ano) {
+    return feriadosDoAno(ano).find((f) => f.nome === nome);
+  }
+
+  const anoHoje = Number(hoje.slice(0, 4));
+  for (const candidato of [anoHoje, anoHoje + 1]) {
+    const f = feriadosDoAno(candidato).find(
+      (x) => x.nome === nome && x.fim >= hoje,
+    );
+    if (f) return f;
+  }
+  return undefined;
+}
+
 // ============================================================
 //  Cálculo
 // ============================================================

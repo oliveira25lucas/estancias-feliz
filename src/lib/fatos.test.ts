@@ -6,7 +6,11 @@ import {
   fatosSemData,
   periodoConferivel,
 } from "./fatos.ts";
-import { calcularOrcamento, tabelaDePrecos } from "./pricing.ts";
+import {
+  calcularOrcamento,
+  feriadoPorNome,
+  tabelaDePrecos,
+} from "./pricing.ts";
 import type { Disponibilidade } from "./agenda.ts";
 
 /**
@@ -140,4 +144,62 @@ test("faltando data de saída, a IA pede em vez de chutar", () => {
   const fatos = fatoDisponibilidade(null, false);
   assert.match(fatos, /peça a data que falta/);
   assert.match(fatos, /NÃO diga que a data está livre NEM que está ocupada/);
+});
+
+test("pedido pelo nome do feriado, os fatos dizem quais são as datas", () => {
+  // 18/08/2026: "está disponível para carnaval 2027?". A resposta certa
+  // precisa dizer 05 a 10/02/2027 — a cliente não sabe em que dia cai.
+  const feriado = feriadoPorNome("carnaval", 2027)!;
+  const orcamento = calcularOrcamento({
+    checkin: feriado.inicio,
+    checkout: feriado.fim,
+    pessoas: 21,
+  });
+
+  const fatos = fatosComData({
+    orcamento,
+    disponibilidade: { ...LIVRE, checkin: feriado.inicio, checkout: feriado.fim },
+    conferivel: true,
+    feriadoPedido: { termo: "carnaval", feriado },
+  });
+
+  assert.match(fatos, /O cliente falou em "carnaval"/);
+  assert.match(fatos, /05\/02\/2027 a 10\/02\/2027/);
+  assert.match(fatos, /DIGA ESSAS DATAS/);
+  assert.match(fatos, /R\$\s5\.500,00/);
+  // E nunca o valor da data que o modelo tinha inventado.
+  assert.doesNotMatch(fatos, /8\.800/);
+});
+
+test("sem feriado pedido, os fatos não falam de feriado nenhum", () => {
+  const orcamento = calcularOrcamento({
+    checkin: "2026-10-02",
+    checkout: "2026-10-04",
+    pessoas: 10,
+  });
+  const fatos = fatosComData({
+    orcamento,
+    disponibilidade: LIVRE,
+    conferivel: true,
+  });
+  assert.doesNotMatch(fatos, /O cliente falou em/);
+});
+
+test("entrar depois do início do bloco não abate nada, e os fatos avisam", () => {
+  // "Seria entrar no sábado e sair na quarta" — no carnaval de 2027 isso
+  // é o mesmo pacote da sexta. Vale convidar a pessoa a chegar antes.
+  const orcamento = calcularOrcamento({
+    checkin: "2027-02-06",
+    checkout: "2027-02-10",
+    pessoas: 21,
+  });
+  const fatos = fatosComData({
+    orcamento,
+    disponibilidade: null,
+    conferivel: true,
+  });
+
+  assert.match(fatos, /alugada fechada, de 05\/02\/2027 a 10\/02\/2027/);
+  assert.match(fatos, /NÃO reduz o valor/);
+  assert.match(fatos, /chegar já em 05\/02\/2027/);
 });

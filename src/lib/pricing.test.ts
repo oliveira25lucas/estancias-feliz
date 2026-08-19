@@ -4,6 +4,7 @@ import {
   calcularOrcamento,
   comReajuste,
   feriadoNoPeriodo,
+  feriadoPorNome,
   feriadosDoAno,
   tabelaDePrecos,
 } from "./pricing.ts";
@@ -403,4 +404,85 @@ test("as noites extras também sofrem o reajuste anual", () => {
     pessoas: 20,
   });
   assert.equal(r.valorTotal, comReajuste(4500, 2027) + comReajuste(2000, 2027));
+});
+
+// ============================================================
+//  O feriado pelo nome
+// ============================================================
+
+/**
+ * Estes casos travam o erro de 18/08/2026: uma cliente perguntou por
+ * "carnaval 2027" e o modelo de extração devolveu 18 a 22/02/2027. O
+ * Carnaval de 2027 é de 05 a 10/02, e a diferença entre os dois na conta
+ * é de R$ 8.800,00 contra R$ 5.500,00.
+ */
+
+test("carnaval de 2027 é de 05 a 10/02, e não o que o modelo achar", () => {
+  const f = feriadoPorNome("carnaval", 2027);
+  assert.equal(f?.nome, "Carnaval");
+  assert.equal(f?.data, "2027-02-09"); // terça
+  assert.equal(f?.inicio, "2027-02-05"); // sexta
+  assert.equal(f?.fim, "2027-02-10"); // quarta de cinzas
+  assert.equal(f?.preco, comReajuste(5000, 2027));
+});
+
+test("o bloco do carnaval de 2027 custa R$ 5.500, não R$ 8.800", () => {
+  const f = feriadoPorNome("carnaval", 2027)!;
+  const certo = calcularOrcamento({
+    checkin: f.inicio,
+    checkout: f.fim,
+    pessoas: 21,
+  });
+  assert.equal(certo.valorTotal, 5500);
+  assert.match(certo.tipoCalculo, /Pacote Carnaval/);
+
+  // O que a Júlia chegou a cotar, com as datas que o modelo inventou.
+  const errado = calcularOrcamento({
+    checkin: "2027-02-18",
+    checkout: "2027-02-22",
+    pessoas: 21,
+  });
+  assert.equal(errado.valorTotal, 8800);
+  assert.match(errado.tipoCalculo, /diárias durante a semana/);
+});
+
+test("o cliente escreve como quiser: acento, caixa e apelido", () => {
+  const esperado = feriadoPorNome("Carnaval", 2027)?.inicio;
+  for (const termo of [
+    "CARNAVAL",
+    "carnaval!!",
+    "Carnaval 2027",
+    "no feriadão de carnaval",
+    "terça de carnaval",
+  ]) {
+    assert.equal(feriadoPorNome(termo, 2027)?.inicio, esperado, termo);
+  }
+
+  assert.equal(feriadoPorNome("reveillon", 2027)?.nome, "Réveillon");
+  assert.equal(feriadoPorNome("ano novo", 2027)?.nome, "Réveillon");
+  assert.equal(feriadoPorNome("páscoa", 2027)?.nome, "Semana Santa");
+  assert.equal(feriadoPorNome("sexta-feira santa", 2027)?.nome, "Semana Santa");
+  assert.equal(feriadoPorNome("7 de setembro", 2027)?.nome, "Independência");
+});
+
+test("sem ano dito, vale a próxima ocorrência que ainda não terminou", () => {
+  // Em 19/08/2026 o carnaval do ano já passou: quem pergunta quer o de 2027.
+  assert.equal(feriadoPorNome("carnaval", null, "2026-08-19")?.inicio, "2027-02-05");
+  // Já o Natal de 2026 ainda vem.
+  assert.equal(feriadoPorNome("natal", null, "2026-08-19")?.inicio, "2026-12-23");
+  // No último dia do bloco ele ainda conta como o desta vez, não da próxima.
+  assert.equal(feriadoPorNome("natal", null, "2026-12-28")?.inicio, "2026-12-23");
+  assert.equal(feriadoPorNome("natal", null, "2026-12-29")?.inicio, "2027-12-23");
+});
+
+test("o que não é feriado não vira feriado", () => {
+  for (const termo of ["", "  ", "fim de semana", "sábado", "aniversário da minha mãe"]) {
+    assert.equal(feriadoPorNome(termo, 2027), undefined, termo);
+  }
+});
+
+test("feriado em quarta não tem bloco, então não é achado pelo nome", () => {
+  // Em 2027 o Dia do Trabalho cai em sábado; em 2030, em quarta-feira.
+  assert.equal(feriadoPorNome("dia do trabalho", 2027)?.inicio, "2027-04-30");
+  assert.equal(feriadoPorNome("dia do trabalho", 2030), undefined);
 });
