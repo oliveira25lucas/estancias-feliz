@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CalendarPlus, Loader2, Trash2, X } from "lucide-react";
+import { CalendarPlus, ExternalLink, Loader2, Trash2, X } from "lucide-react";
 import type { Reserva, StatusReserva } from "@/lib/supabase";
 import { formatarBRL, formatarDataBR } from "@/lib/pricing";
 import { criarReserva, excluirReserva, mudarStatusReserva } from "./actions";
@@ -21,6 +21,20 @@ const STATUS = [
   { valor: "CONFIRMADA", rotulo: "Confirmada", cor: "bg-mata-100 text-mata-800" },
   { valor: "CANCELADA", rotulo: "Cancelada", cor: "bg-mata-50 text-mata-400" },
 ] as const satisfies readonly { valor: StatusReserva; rotulo: string; cor: string }[];
+
+/**
+ * O link da reserva no painel da Airbnb, guardado em `observacoes` pelo
+ * importador.
+ *
+ * Existe porque o calendário da Airbnb NÃO manda nome nem telefone do
+ * hóspede — eles removeram isso em 2019. A reserva chega aqui anônima,
+ * e este link é o caminho de um clique para descobrir quem é. Sem ele,
+ * a única saída seria procurar a data à mão no aplicativo da Airbnb.
+ */
+function linkDaAirbnb(observacoes: string | null): string | null {
+  const achado = /(https?:\/\/[^\s]+)/.exec(observacoes ?? "");
+  return achado ? achado[1] : null;
+}
 
 export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
   const [abrindo, setAbrindo] = useState(false);
@@ -183,6 +197,17 @@ export function GerenciarReservas({ reservas }: { reservas: Reserva[] }) {
                       : ""}
                     {r.origem ? ` · via ${r.origem}` : ""}
                   </p>
+                  {linkDaAirbnb(r.observacoes) && (
+                    <a
+                      href={linkDaAirbnb(r.observacoes) ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-terra-700 underline underline-offset-2 hover:text-terra-600"
+                    >
+                      <ExternalLink className="size-3" aria-hidden />
+                      Ver o hóspede na Airbnb
+                    </a>
+                  )}
                 </div>
 
                 <select

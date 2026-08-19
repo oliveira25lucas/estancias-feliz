@@ -101,7 +101,21 @@ export type Reserva = {
   valor_final: string | number | null;
   tipo_reserva: string | null;
   status: StatusReserva | null;
+  /** whatsapp (Júlia), admin (painel) ou airbnb (importada). */
   origem: string | null;
+  // ---- Sincronia com a Airbnb (migração 006) ----
+  /**
+   * Identidade da reserva no calendário da Airbnb. NULL em tudo que
+   * nasceu aqui dentro — e é justamente o NULL que protege essas
+   * linhas: o importador só mexe em quem tem UID.
+   */
+  uid_externo: string | null;
+  /**
+   * Texto livre. Nas reservas da Airbnb guarda o link da reserva e o
+   * final do telefone, que é tudo que o calendário deles informa —
+   * nome e telefone completo a Airbnb não manda.
+   */
+  observacoes: string | null;
 };
 
 export type DatasBloqueadas = {
@@ -110,4 +124,8 @@ export type DatasBloqueadas = {
   data_inicio: string;
   data_fim: string;
   motivo: string | null;
+  // ---- Sincronia com a Airbnb (migração 006) ----
+  /** admin (painel) ou airbnb (importado). O importador só apaga airbnb. */
+  origem: string | null;
+  uid_externo: string | null;
 };

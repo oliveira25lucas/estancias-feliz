@@ -77,6 +77,32 @@ O site manda mensagem sozinho para o grupo dos donos e para a faxineira
 README: **o painel de produção envia de verdade**, e o texto das mensagens é
 travado por testes em `notificacoes.test.ts`.
 
+# Sincronia com a Airbnb
+
+O site publica `/api/calendario.ics` (a Airbnb busca de 3 em 3 horas) e
+importa o calendário dela por `/api/sync/airbnb`, chamado pelo **n8n do
+VPS** de 15 em 15 minutos — não pelo cron da Vercel, que no plano Hobby
+só roda uma vez por dia. Leia "Sincronia de calendário com a Airbnb" no
+README antes de mexer.
+
+Dois pontos que quebram tudo em silêncio:
+
+- **O dia da saída.** O sítio conta check-out como ocupado; o iCal conta
+  `DTEND` como exclusivo. A conversão vive só em `reservaParaEvento` e
+  `eventoParaReserva` (`src/lib/ical.ts`), travada por `ical.test.ts`.
+  Errar um dia é vender o mesmo fim de semana duas vezes.
+- **O importador apaga coisa.** Ele só pode tocar em linha com
+  `origem = 'airbnb'` e `uid_externo` preenchido, e o filtro se repete na
+  leitura E na escrita. Afrouxar isso apaga bloqueio de manutenção e
+  reserva de contrato.
+
+O calendário publicado sai de casa: nunca acrescente nome, telefone,
+valor ou motivo de bloqueio ao `.ics` — há teste travando isso.
+
+O workflow `n8n/sincronizar-airbnb.json` é **novo e separado** do
+`atendimento-sitio-v4.json`, de propósito: sincronia não é motivo para
+arriscar um `PUT` no agente que está no ar.
+
 # O workflow do n8n não é seu
 
 `n8n/atendimento-sitio-v4.json` é o agente que está no ar. Reconstruí-lo a

@@ -370,6 +370,137 @@ Os testes em `src/lib/pricing.test.ts` travam tudo isso.
 
 ---
 
+## Sincronia de calendário com a Airbnb
+
+Fechou data aqui, fecha na Airbnb. Reservou pela Airbnb, fecha aqui — e a
+Júlia para de oferecer o fim de semana no WhatsApp.
+
+```
+   RESERVA NO SITE / PAINEL / JÚLIA          RESERVA NA AIRBNB
+              ↓                                      ↓
+         Supabase                            calendário .ics
+              ↓                                      ↓
+   GET /api/calendario.ics  ──── 3h ───►  Airbnb busca sozinha
+                                                     ↓
+   n8n do VPS, 15 em 15 min  ────────►  GET /api/sync/airbnb
+              ↓
+         Supabase  ──►  site, calculadora, Júlia, Maurizia
+```
+
+**Não é instantâneo, e não tem como ser.** A Airbnb atualiza calendário
+importado de 3 em 3 horas — é o número oficial deles. Existe uma janela de
+até algumas horas em que os dois lados podem vender a mesma data. É assim
+para todo anfitrião que usa iCal; só a API oficial resolveria, e ela é
+fechada a parceiros convidados.
+
+### Custa alguma coisa? Não
+
+Nada além do que já se paga. iCal é um formato de arquivo, não um serviço:
+não há assinatura nem cadastro. A rota roda na Vercel que já existe, e a
+Airbnb bate nela **8 vezes por dia** — o plano Hobby inclui um milhão de
+invocações por mês.
+
+**A busca roda no n8n do VPS, não no cron da Vercel**, e isso é uma escolha
+de custo: no Hobby o cron só roda uma vez por dia, e para rodar de 15 em 15
+minutos seria preciso o Pro (US$ 20/mês). O n8n já está no ar e não tem
+cota de execução por ser self-hosted.
+
+### A pegadinha: o dia da saída
+
+O sítio conta o **dia da saída como ocupado** (o hóspede sai às 16h e ainda
+há limpeza). O iCalendar conta `DTEND` como **exclusivo**. As duas réguas
+não batem, e errar um dia aqui é vender o mesmo fim de semana duas vezes.
+
+| Sentido | Conversão |
+|---|---|
+| Site → Airbnb | reserva `01 a 03` vira `DTSTART=01, DTEND=04` — bloqueia 1, 2 e 3, libera o dia 4 |
+| Airbnb → site | `DTSTART=10, DTEND=12` vira check-in 10, check-out **12** — o dia 12 é a limpeza |
+
+A conversão mora em duas funções e em lugar nenhum mais:
+`reservaParaEvento` e `eventoParaReserva`, em `src/lib/ical.ts`. Quem for
+caçar um erro de um dia começa por elas — e por `ical.test.ts`, que trava
+as duas.
+
+### O que a Airbnb NÃO manda
+
+**Nome e telefone do hóspede não existem no calendário.** A Airbnb removeu
+esses campos em 1º de dezembro de 2019, por privacidade. Não é limitação
+deste código e não há como contornar por iCal.
+
+O que o evento traz, e que o importador guarda em `reservas.observacoes`:
+o código da reserva (`HM...`), os **4 últimos dígitos** do telefone e o
+link direto para a reserva no painel da Airbnb. A reserva aparece no
+painel como "Hóspede Airbnb", com um link **"Ver o hóspede na Airbnb"** —
+é o caminho de um clique para descobrir quem é.
+
+Escreveu o nome à mão no lugar de "Hóspede Airbnb"? O importador **nunca
+sobrescreve**: ele não tem nome nenhum para mandar, e apagar o que foi
+descoberto à mão seria o pior resultado possível.
+
+### As travas contra apagar a agenda
+
+O importador roda sozinho, de 15 em 15 minutos, e cancela e apaga coisa.
+O que o segura:
+
+- **Só toca em linha com `origem = 'airbnb'`.** Reserva da Júlia, reserva
+  de contrato e bloqueio de manutenção são invioláveis. O filtro se repete
+  na consulta E na escrita.
+- **Linha sem `uid_externo` é intocável**, mesmo marcada como airbnb.
+- **Feed vazio não apaga nada.** Um calendário sem nenhum evento é
+  indistinguível de um feed quebrado, então ele exige pelo menos um evento
+  como prova de vida antes de cancelar qualquer coisa.
+- **Resposta que não é calendário derruba a sincronia** em vez de ser lida
+  como "não há reserva nenhuma".
+- **Reserva que some é CANCELADA, não apagada** — o histórico fica.
+- **O site é a fonte da verdade.** Reserva da Airbnb cujas datas o site
+  já tem registradas por outro caminho é **ignorada**, não duplicada.
+  Sem isso, as reservas que o Lucas digitou à mão no painel ganhariam
+  uma segunda linha — e o lembrete de 7 dias, que é por linha, sairia
+  **duas vezes para a Maurizia** sobre o mesmo hóspede. Ignorar se cura
+  sozinho: apagada a linha manual, a passada seguinte cria a da Airbnb.
+  Sobreposição *parcial* é caso diferente — é criada e vira alerta,
+  porque aí é choque de datas de verdade.
+- **O que veio da Airbnb não volta para a Airbnb**, senão o dia de limpeza
+  empilharia um dia a cada volta até fechar o calendário inteiro.
+
+### Ligar
+
+1. Rodar `supabase/migrations/006_airbnb.sql` no SQL Editor.
+2. Gerar o token e cadastrar na Vercel, **em Production**:
+   ```bash
+   openssl rand -hex 32
+   ```
+   `ICAL_TOKEN=<o valor>`. Sem ele a rota devolve 503.
+3. Na Airbnb, em Calendário → Disponibilidade → **Conectar a outro site**:
+   - **Exportar calendário**: copiar o link e pôr em `AIRBNB_ICAL_URL`.
+   - **Importar calendário**: colar
+     `https://www.estanciasfeliz.com.br/api/calendario.ics?token=<ICAL_TOKEN>`
+4. Ainda na Airbnb, ligar **tempo de preparo = 1 noite**. É o que dá o dia
+   de limpeza entre um hóspede e outro sem criar laço entre os calendários.
+5. Importar `n8n/sincronizar-airbnb.json` no n8n e ativar. Ele já aponta
+   para a credencial *Site Estancias Feliz (x-api-token)* que existe.
+6. Conferir sem gravar nada:
+   ```bash
+   curl -s -H "x-api-token: $API_TOKEN" \
+     "https://www.estanciasfeliz.com.br/api/sync/airbnb?simular=1" | head -40
+   ```
+7. Só depois de ver algumas sincronias limpas, ligar
+   `AIRBNB_AVISA_WHATSAPP=1`, que faz reserva da Airbnb avisar o grupo e a
+   equipe. **O lembrete de 7 dias para a Maurizia não depende dessa chave**
+   — ele já sai para toda reserva `CONFIRMADA`, inclusive as importadas.
+
+### O que o iCal não resolve
+
+- **Preço e mínimo de noites não atravessam.** A regra de bloco fechado de
+  feriado do `pricing.ts` não existe do lado de lá: alguém pode pegar duas
+  noites soltas de Carnaval pela Airbnb. Só se resolve configurando
+  estadia mínima no painel deles.
+- **A Airbnb avisa** que noites *reservadas* em outra plataforma bloqueiam,
+  mas *bloqueios* podem ou não bloquear. Na prática funciona; vale
+  confirmar com um bloqueio de teste antes de confiar.
+
+---
+
 ## Rodando localmente
 
 ```bash
@@ -415,6 +546,7 @@ supabase/migrations/002_agenda.sql
 supabase/migrations/003_notificacoes.sql
 supabase/migrations/004_crm.sql
 supabase/migrations/005_lead_whatsapp.sql
+supabase/migrations/006_airbnb.sql
 ```
 
 O `001` cria `orcamentos` e `datas_bloqueadas` e liga RLS nas duas.
@@ -431,6 +563,11 @@ O `005` libera os tipos `LEAD_NOVO` e `LEAD_RETOMADA` em `notificacoes` e
 guarda em `orcamentos` quando o site falou com a pessoa. Sem ele o
 disparo para o lead não sai — a trava de duplicata falha no CHECK de
 `tipo` e a mensagem é engolida com erro no log.
+O `006` acrescenta `uid_externo` e `origem` às tabelas de agenda, e
+`observacoes` a `reservas`. É o que permite ao importador da Airbnb
+reconhecer o que já trouxe e — mais importante — saber quais linhas
+**não** são dele. Sem ele, `/api/sync/airbnb` falha com erro de coluna
+inexistente e nada é importado.
 
 ---
 

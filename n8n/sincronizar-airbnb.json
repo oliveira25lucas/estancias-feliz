@@ -1,0 +1,110 @@
+{
+  "name": "Sincronizar Airbnb",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000001",
+      "name": "A cada 15 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.estanciasfeliz.com.br/api/sync/airbnb",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "b2000000-0000-4000-8000-000000000002",
+      "name": "Sincronizar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0gyaq2PojEPwlyjk",
+          "name": "Site Estancias Feliz (x-api-token)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Confere o que a sincronia devolveu.\n *\n * Lançar aqui é de propósito: uma execução vermelha na lista do n8n é\n * o único jeito de a sincronia quebrada aparecer para alguém. Se este\n * nó engolisse o erro, o site seguiria vendendo data que a Airbnb já\n * vendeu, e ninguém descobriria até o cliente reclamar.\n */\nconst resposta = $input.first().json;\n\nif (resposta.erro) {\n  throw new Error(`Sincronia da Airbnb falhou: ${resposta.erro}`);\n}\n\nconst alertas = resposta.alertas || [];\nif (alertas.length > 0) {\n  throw new Error(`Sincronia da Airbnb pede atenção: ${alertas.join(' | ')}`);\n}\n\nconst r = resposta.reservas || {};\nconst b = resposta.bloqueios || {};\n\nconst conta = (lista) => (lista || []).length;\nconst mudancas =\n  conta(r.criadas) + conta(r.atualizadas) + conta(r.canceladas) +\n  conta(b.criados) + conta(b.atualizados) + conta(b.removidos);\n\nreturn [\n  {\n    json: {\n      eventosNaAirbnb: resposta.eventos,\n      mudancas,\n      reservas: r,\n      bloqueios: b,\n      avisos: resposta.avisos,\n    },\n  },\n];\n"
+      },
+      "id": "b2000000-0000-4000-8000-000000000003",
+      "name": "Conferir Resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Sincronizar Airbnb → site\n\nBaixa o calendário do anúncio na Airbnb e traz as reservas e os\nbloqueios para o Supabase do sítio. É o que impede o site e a Júlia de\noferecerem uma data que a Airbnb já vendeu.\n\n**Por que aqui e não no cron da Vercel:** o plano da Vercel é Hobby, e\nlá o cron só roda uma vez por dia. Uma vez por dia não serve para\nagenda. Este n8n já está no ar e faz de 15 em 15 minutos sem custo.\n\n**O sentido contrário não precisa de nó nenhum.** A Airbnb busca\nsozinha a URL /api/calendario.ics do site, de 3 em 3 horas.\n\n**Credencial:** a mesma \"Site Estancias Feliz (x-api-token)\" que o\nworkflow de atendimento já usa.\n\n**Para testar sem gravar nada:** acrescente ?simular=1 na URL do nó\n\"Sincronizar\" e execute à mão. Ele mostra o plano e não escreve.\n",
+        "height": 460,
+        "width": 420,
+        "color": 4
+      },
+      "id": "b2000000-0000-4000-8000-000000000004",
+      "name": "Leia-me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -160
+      ]
+    }
+  ],
+  "connections": {
+    "A cada 15 min": {
+      "main": [
+        [
+          {
+            "node": "Sincronizar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sincronizar": {
+      "main": [
+        [
+          {
+            "node": "Conferir Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
