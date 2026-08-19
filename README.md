@@ -489,6 +489,39 @@ O que o segura:
    equipe. **O lembrete de 7 dias para a Maurizia não depende dessa chave**
    — ele já sai para toda reserva `CONFIRMADA`, inclusive as importadas.
 
+### Nada aqui cancela reserva
+
+Vale dizer explicitamente, porque a dúvida aparece e o medo é razoável:
+**esta sincronia não consegue cancelar um aluguel, em nenhum dos dois
+sentidos.**
+
+- O importador **só lê** a Airbnb. Não existe uma linha de código que
+  escreva lá — nem para bloquear, nem para cancelar.
+- O calendário que a Airbnb importa daqui **só fecha data para venda
+  nova**. Reserva confirmada tem precedência sobre bloqueio importado.
+
+O pior caso possível é uma data ficar fechada quando podia estar aberta.
+É oportunidade perdida, nunca dinheiro já ganho.
+
+### Bloqueio não é reserva
+
+O feed da Airbnb traz dois tipos de evento, e confundi-los assusta à toa:
+
+| `SUMMARY` | O que é | Tem link/código? |
+|---|---|---|
+| `Reserved` | hóspede que pagou | sim |
+| `Airbnb (Not available)` | data fechada à mão pelo anfitrião | não |
+
+Apagar um bloqueio na Airbnb reabre a data para venda. Não toca em
+reserva nenhuma — na tela deles, desfazer uma reserva exige entrar nela
+e **cancelar**, ação separada e com multa.
+
+Bloqueio antigo que sobrou na Airbnb **não precisa ser limpo**. Se ele
+cobre data que o site já tem vendida, não faz efeito nenhum. O único
+incômodo aparece se um aluguel for cancelado no site e a data continuar
+fechada: aí o bloqueio da Airbnb é que está segurando, e apagá-lo lá
+libera aqui na passada seguinte.
+
 ### O que o iCal não resolve
 
 - **Preço e mínimo de noites não atravessam.** A regra de bloco fechado de
