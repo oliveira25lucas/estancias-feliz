@@ -877,8 +877,14 @@ Estilo das mensagens deste repo: assunto curto em português, no presente
 git push
 ```
 
-Só versionamento. `origin` é `github.com/oliveira25lucas/estancias-feliz`,
-branch `site-inicial`. **Não dispara deploy.**
+`origin` é `github.com/oliveira25lucas/estancias-feliz`, branch
+`site-inicial`.
+
+> ⚠️ **Isto já publica em produção.** A conexão GitHub → Vercel está ligada
+> desde 17/08/2026: cada push em `site-inicial` cria um deploy de produção
+> sozinho, com o cron registrado. Antes não era assim, e este parágrafo
+> dizia o contrário — pushar código quebrado derruba o site na hora. Por
+> isso a verificação do passo 1 vem **antes** do push, nunca depois.
 
 ### 4. Preview
 
