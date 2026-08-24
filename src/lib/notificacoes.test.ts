@@ -188,11 +188,11 @@ test("o valor nunca sai em aviso interno", () => {
 
 // ---------- Equipe do sítio: Maurizia (limpeza) e Renato (piscina) ----------
 
-test("a equipe recebe entrada, saída, horários e quantas pessoas", () => {
+test("a equipe recebe entrada, saída e quantas pessoas", () => {
   const texto = mensagemNovaParaEquipe("Maurizia", NOVA, AGENDA);
   assert.match(texto, /^Oi, Maurizia! Tudo bem\? 🏡/);
-  assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
-  assert.match(texto, /\*Saída:\* domingo, 22\/11\/2026, 16h/);
+  assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026$/m);
+  assert.match(texto, /\*Saída:\* domingo, 22\/11\/2026$/m);
   assert.match(texto, /\*Pessoas:\* 30/);
 });
 
@@ -218,6 +218,26 @@ test("cada um é chamado pelo próprio nome, e o resto é igual", () => {
   );
 });
 
+test("nenhum aviso interno diz a que horas entra ou sai", () => {
+  // A tabela diz 8h de entrada e saída até 16h, mas o combinado com o
+  // hóspede às vezes muda — e aí a mensagem automática vira a versão
+  // errada que a equipe leu primeiro, uma semana antes. O aviso diz QUE
+  // DIA; a que horas é assunto do Lucas com eles, no dia.
+  const internas = [
+    mensagemNovaParaGrupo(NOVA, AGENDA),
+    mensagemCanceladaParaGrupo(NOVA, AGENDA),
+    mensagemLembreteParaGrupo(NOVA, ["Maurizia", "Renato"]),
+    mensagemNovaParaEquipe("Maurizia", NOVA, AGENDA),
+    mensagemCanceladaParaEquipe("Renato", NOVA, AGENDA),
+    mensagemLembreteParaEquipe("Maurizia", NOVA),
+  ];
+  for (const texto of internas) {
+    // Pega "8h", "16h", "8:00", "16h30", "às 16 horas" e "16hs".
+    assert.doesNotMatch(texto, /\d{1,2}\s*(h(oras?|s)?\b|:\d{2})/i);
+    assert.doesNotMatch(texto, /check-?in|check-?out/i);
+  }
+});
+
 test("nenhum aviso estipula prazo de trabalho", () => {
   // Quando a limpeza e a piscina são feitas é combinado entre eles e o
   // Lucas. O aviso dá o fato — as datas — e não dá ordem.
@@ -240,7 +260,7 @@ test("a equipe recebe a agenda completa junto", () => {
 test("o lembrete de 7 dias é recado, e termina nas datas", () => {
   const texto = mensagemLembreteParaEquipe("Maurizia", NOVA);
   assert.match(texto, /\*Falta 1 semana\*/);
-  assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026, 8h/);
+  assert.match(texto, /\*Entrada:\* sexta, 20\/11\/2026$/m);
   // Nada de cobrar resposta: a Júlia está calada para o número dela, então
   // pergunta de robô fica sem ninguém do outro lado.
   assert.doesNotMatch(texto, /\?/);

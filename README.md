@@ -211,7 +211,7 @@ mensagem, só com o nome trocado na saudação:
 |---|---|---|
 | Reserva entra em `CONFIRMADA` | grupo + equipe | a agenda futura inteira, com a data que entrou em negrito e uma seta |
 | Reserva sai de `CONFIRMADA` (cancelada ou excluída) | grupo + equipe | o período riscado e a agenda já sem ele |
-| 7 dias antes da entrada | equipe + grupo | data, horários e quantas pessoas; o aviso ao grupo diz quem da equipe já foi avisado |
+| 7 dias antes da entrada | equipe + grupo | as datas e quantas pessoas — **sem horário**; o aviso ao grupo diz quem da equipe já foi avisado |
 | Pessoa vira lead no site | **o cliente** | recapitulação do orçamento e "posso prosseguir?" — veja o aviso abaixo |
 | Lead não respondeu | **o cliente** | uma única retomada, com saída explícita |
 
@@ -392,6 +392,14 @@ curl -H "x-api-token: $API_TOKEN" \
   não um erro na tela.
 - **A equipe nunca vê valor de aluguel.** Nem no aviso, nem no lembrete —
   os testes garantem.
+- **Nenhum aviso interno diz a que horas entra ou sai.** A tabela é entrada
+  8h e saída até 16h, mas o combinado com o hóspede às vezes muda — e uma
+  mensagem automática mandada sete dias antes vira a versão errada que a
+  Maurizia e o Renato leram primeiro. O aviso diz **que dia** entra gente
+  no sítio; a que horas é o Lucas quem fala com eles, no dia. O teste
+  "nenhum aviso interno diz a que horas entra ou sai" varre as seis
+  mensagens internas atrás de `8h`, `16:00`, `às 16 horas` e das palavras
+  *check-in* / *check-out*, então recolocar o horário quebra o `npm test`.
 
 ### Regras de preço que valem conhecer
 

@@ -226,8 +226,8 @@ function listarNomes(nomes: readonly string[]): string {
 //  Equipe do sítio — a Maurizia (limpeza) e o Renato (piscina)
 //
 //  Texto de gente, não de sistema: chega como mensagem pessoal. Sem
-//  emoji de robô, sem "mensagem automática", e sempre com os horários
-//  que valem (8h de entrada, 16h de saída).
+//  emoji de robô, sem "mensagem automática" e SEM HORÁRIO — veja
+//  `blocoDatas` logo abaixo.
 //
 //  O nome vem por parâmetro em vez de estar escrito no texto. Os dois
 //  precisam da mesma informação — quando entra gente no sítio e quantas —
@@ -241,11 +241,20 @@ function listarNomes(nomes: readonly string[]): string {
  * e ela saiu: quando a limpeza e a piscina são feitas é combinado entre
  * eles e o Lucas, não é regra do sistema. Aviso automático dá o fato (as
  * datas) e não dá ordem.
+ *
+ * HORÁRIO NÃO ENTRA EM AVISO INTERNO — nem para a equipe, nem para o
+ * grupo. A tabela diz entrada 8h e saída até 16h, mas o combinado com o
+ * hóspede às vezes muda, e aí a mensagem automática vira a versão errada
+ * que a Maurizia e o Renato leram primeiro. O aviso serve para dizer QUE
+ * DIA entra gente no sítio; a que horas é assunto do Lucas com eles, no
+ * dia, por mensagem de gente. Pela mesma razão o horário sumiu do
+ * lembrete de 7 dias: uma semana é tempo de sobra para o horário mudar
+ * depois de anunciado.
  */
 function blocoDatas(r: ReservaComData): string[] {
   const linhas = [
-    `*Entrada:* ${dataFalada(r.data_checkin)}, 8h`,
-    `*Saída:* ${dataFalada(r.data_checkout)}, 16h`,
+    `*Entrada:* ${dataFalada(r.data_checkin)}`,
+    `*Saída:* ${dataFalada(r.data_checkout)}`,
   ];
   if (r.qtd_pessoas) linhas.push(`*Pessoas:* ${r.qtd_pessoas}`);
   return linhas;

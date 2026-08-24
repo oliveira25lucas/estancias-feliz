@@ -56,6 +56,23 @@ npx vercel crons ls                                                             
 npx vercel rollback
 ```
 
+> ⚠️ **`npm run build` não passa nesta máquina, e não é o seu código.**
+> Ele morre em `Error occurred prerendering page "/_global-error"` →
+> `TypeError: Cannot read properties of null (reading 'useContext')`. A
+> página é interna do Next (não existe `global-error.tsx` no repo), o
+> mesmo commit constrói na Vercel em ~21s, e limpar o `.next` não muda
+> nada. É a combinação **Next 16 + turbopack + macOS Intel**
+> (`swc-darwin-x64`); a Vercel constrói em linux-x64 e não vê isso.
+> Conferido em 24/08/2026 fazendo `git stash` e construindo o HEAD limpo,
+> que falha igual.
+>
+> Consequência prática: **o passo 1 perdeu o comando que mais salvava.**
+> Rode os outros três (`npm test`, `npx tsc --noEmit`, `npm run lint`) e
+> use um **preview da Vercel como o gate de build** — `npx vercel deploy
+> --yes` constrói do lado deles e falha antes de qualquer coisa ir para
+> produção. Não conclua que sua mudança quebrou o build sem antes
+> comparar com o HEAD limpo.
+
 Armadilhas que já custaram tempo:
 
 - **Cron só é registrado em deploy com target production.** "Promote to
@@ -76,6 +93,14 @@ O site manda mensagem sozinho para o grupo dos donos e para a faxineira
 `notificacoes.ts` ou `whatsapp.ts`, leia "Avisos automáticos no WhatsApp" no
 README: **o painel de produção envia de verdade**, e o texto das mensagens é
 travado por testes em `notificacoes.test.ts`.
+
+Duas coisas que os testes travam e que parecem inofensivas de reverter:
+**valor de aluguel nunca aparece** em aviso interno, e **horário de entrada
+ou saída também não**. O horário saiu em 24/08/2026: a tabela é 8h e até
+16h, mas o combinado com o hóspede muda, e um lembrete disparado sete dias
+antes vira a versão errada que a Maurizia e o Renato leram primeiro. O aviso
+diz **que dia** entra gente no sítio — a que horas é o Lucas quem fala com
+eles, no dia.
 
 # Sincronia com a Airbnb
 
