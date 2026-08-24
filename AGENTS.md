@@ -102,6 +102,42 @@ antes vira a versão errada que a Maurizia e o Renato leram primeiro. O aviso
 diz **que dia** entra gente no sítio — a que horas é o Lucas quem fala com
 eles, no dia.
 
+# Contratos
+
+O painel gera o contrato de locação (aba **Contratos**). Leia "Contratos"
+no README antes de mexer. Três regras que o código existe para manter, e
+que parecem inofensivas de afrouxar:
+
+- **Contrato emitido guarda uma CÓPIA do modelo** (`contratos.clausulas`).
+  Editar `contrato_clausulas` muda os próximos contratos e **não pode**
+  tocar nos que já foram enviados. Nunca troque a cópia por uma leitura do
+  modelo na hora de imprimir: documento assinado que muda de texto depois
+  não é documento.
+- **Nenhuma cláusula cita outra pelo número.** A numeração é recontada a
+  cada contrato porque cláusulas condicionais entram e saem. Há teste
+  varrendo o modelo atrás de `Cláusula \d`.
+- **Campo vazio fica VISÍVEL** como `{{variavel}}` no meio do texto, e
+  condição desconhecida **inclui** a cláusula. Os dois erram para o lado
+  do excesso de propósito: o que sumiu sozinho ninguém percebe.
+
+O texto e as contas moram em `src/lib/contrato.ts`, que é **puro** — sem
+Supabase, sem rede — e é por isso que o `npm test` alcança o contrato
+inteiro. Os testes reproduzem frases do contrato assinado em 24/08/2026
+palavra por palavra. Quem fala com banco é `contratos.ts`, ao lado.
+
+Duas armadilhas já pagas:
+
+- **`numeric` do Postgres volta como STRING** pelo cliente do Supabase.
+  Somar sem converter concatena. Tudo passa por `num()` em `contratos.ts`.
+- **`formatarBRL` usa espaço inquebrável (U+00A0).** No contrato usa-se
+  `dinheiro()`, que troca por espaço comum — o texto é copiado para o
+  WhatsApp, e cinco testes falharam comparando strings visualmente
+  idênticas antes disso aparecer.
+
+Não há biblioteca de PDF, e não precisa haver: o botão é `window.print()`
+e o navegador salva A4 com texto selecionável. As regras de folha estão em
+`globals.css`, sob `@media print`.
+
 # Sincronia com a Airbnb
 
 O site publica `/api/calendario.ics` (a Airbnb busca de 3 em 3 horas) e

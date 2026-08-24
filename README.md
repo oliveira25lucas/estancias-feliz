@@ -601,6 +601,113 @@ libera aqui na passada seguinte.
 
 ---
 
+## Contratos
+
+O contrato de locação era um `.docx` duplicado a cada aluguel e editado à
+mão. Nome, CPF, endereço, datas, horários, quantidade de gente, valor,
+parcelas e caução mudam em **nove lugares diferentes** do documento, e cada
+valor aparece duas vezes — em número e por extenso. O que passava batido
+passava para o cliente.
+
+Agora sai do painel: **aba Contratos**, botão *Novo contrato*. O PDF é o
+“Salvar como PDF” do diálogo de impressão.
+
+### O modelo é editável; o contrato emitido é congelado
+
+Esta é a única ideia que importa aqui.
+
+| | onde | quem muda |
+| --- | --- | --- |
+| **Modelo** | tabela `contrato_clausulas` | você, no painel, em *Contrato base* |
+| **Contrato emitido** | coluna `contratos.clausulas` | ninguém |
+
+Ao criar um contrato, o modelo inteiro é **copiado para dentro dele**.
+Editar uma cláusula do modelo amanhã muda os próximos contratos e **não
+toca** nos que já foram enviados. Documento assinado que muda de texto
+porque alguém corrigiu uma vírgula três meses depois não é documento, é
+armadilha.
+
+O que se congela é o **modelo**, com as `{{variaveis}}` ainda dentro — não
+o texto já preenchido. Assim dá para corrigir um CPF errado depois de o
+contrato existir, sem reescrever o documento.
+
+Contrato em `ASSINADO` recusa edição de cláusula: para mudar o texto, faz
+outro.
+
+### A numeração é recontada, sempre
+
+A cláusula da hidromassagem tem duas versões (contratada / não
+contratada) e a do limite de pessoas também (com evento / sem). Só uma de
+cada entra. Se a numeração fosse fixa, o contrato sairia pulando da 13ª
+para a 15ª.
+
+Por isso **nenhuma cláusula pode citar outra pelo número** — o modelo
+original dizia *"conforme a Cláusula 5º"* e virou *"conforme a cláusula
+seguinte"*. Há um teste que varre o modelo atrás de `Cláusula \d` e cai se
+alguém reintroduzir a referência.
+
+### O que muda a cada contrato
+
+Nome, CPF, endereço e telefone · entrada e saída (data **e hora**) · gente
+dormindo e gente no evento · valor · **parcelas** · chave PIX e titular ·
+caução · hidromassagem contratada ou não · multas e excedentes · foro ·
+data da assinatura.
+
+**O horário é campo, não constante.** A tabela do site diz 8h/16h, mas o
+combinado com o hóspede muda: nos dois últimos contratos a entrada foi
+**05:00 e 06:00**. É a mesma razão pela qual o aviso automático de
+WhatsApp deixou de citar horário.
+
+**As parcelas são o que mais errava.** R$ 3.800 em 3 vezes não dá número
+redondo, e a conta feita de cabeça some ou inventa um centavo. Os botões
+dividem certo (a sobra vai para as **últimas** parcelas, como no contrato
+real de 1.266,66 / 1.266,67 / 1.266,67), e cada linha continua editável —
+o combinado nem sempre é divisão igual. O outro botão faz *sinal de X%
+agora, resto na entrada*, que foi o formato do contrato de R$ 3.900
+(780 + 3.120). O painel avisa quando a soma não bate com o aluguel.
+
+**Todo valor sai por extenso**, porque é praxe jurídica e serve para
+desfazer dúvida sobre dígito rasurado. `porExtenso()` acerta as regras
+chatas: *cem* só quando é exatamente 100, *mil* nunca *um mil*, e o "e"
+entre grupos só quando a língua pede — *três mil **e** novecentos*, mas
+*mil duzentos e sessenta e seis*.
+
+### Buraco nunca sai calado
+
+Campo vazio aparece como `{{pix_chave}}` **no meio do texto**, e a página
+lista o que falta antes de imprimir. Um espaço em branco num contrato
+passa despercebido; uma marca dessas, não. Pela mesma lógica, condição
+desconhecida **inclui** a cláusula: cláusula a mais se discute, cláusula
+que sumiu sozinha ninguém percebe.
+
+### Por que não há biblioteca de PDF
+
+O botão chama `window.print()`, e o navegador salva um A4 de verdade, com
+o texto selecionável e pesquisável. Uma biblioteca no servidor daria o
+mesmo arquivo por muito mais código, uma dependência a mais no bundle da
+Vercel e a tipografia recriada num dialeto próprio em vez de CSS. As
+regras de folha ficam em `globals.css`, sob `@media print` — inclusive o
+`break-inside: avoid` que impede uma cláusula de partir entre duas
+páginas.
+
+### Onde mexer
+
+| Arquivo | Papel |
+| --- | --- |
+| `src/lib/contrato.ts` | **puro e testado**: as 30 cláusulas-base, extenso, parcelas, montagem |
+| `src/lib/contratos.ts` | banco: ler/gravar modelo e contratos |
+| `src/app/admin/Contratos.tsx` | a lista e o formulário |
+| `src/app/admin/ModeloContrato.tsx` | editar o contrato base |
+| `src/app/admin/contratos/[id]/` | a via impressa |
+
+A divisão puro/banco é a mesma de `notificacoes.ts` / `avisos.ts`, e é só
+por causa dela que o `npm test` alcança o texto do contrato. Os testes
+reproduzem **frases inteiras do contrato assinado em 24/08/2026**: se o
+gerador escrever diferente do documento que já foi para o cliente, o
+teste cai.
+
+---
+
 ## Rodando localmente
 
 ```bash
@@ -647,6 +754,7 @@ supabase/migrations/003_notificacoes.sql
 supabase/migrations/004_crm.sql
 supabase/migrations/005_lead_whatsapp.sql
 supabase/migrations/006_airbnb.sql
+supabase/migrations/007_contratos.sql
 ```
 
 O `001` cria `orcamentos` e `datas_bloqueadas` e liga RLS nas duas.
@@ -668,6 +776,12 @@ O `006` acrescenta `uid_externo` e `origem` às tabelas de agenda, e
 reconhecer o que já trouxe e — mais importante — saber quais linhas
 **não** são dele. Sem ele, `/api/sync/airbnb` falha com erro de coluna
 inexistente e nada é importado.
+O `007` cria `contratos` e `contrato_clausulas`. **Sem ele o painel
+continua abrindo** — a aba Contratos aparece vazia e o modelo cai no
+texto do código —, mas gerar um contrato falha. `contrato_clausulas`
+nasce vazia de propósito: o texto das cláusulas mora em
+`src/lib/contrato.ts`, onde o `npm test` alcança, e só é copiado para o
+banco na primeira edição pelo painel.
 
 ---
 
@@ -859,8 +973,11 @@ src/
 │   ├── api/orcamento/route.ts    # POST cria o lead, PATCH atualiza o mesmo
 │   ├── api/cron/lembretes/       # lembrete de 7 dias (chamado pelo cron)
 │   └── admin/                    # painel protegido, em abas (dispara os avisos)
-│       ├── PainelAbas.tsx        # agenda | leads
-│       └── CRMLeads.tsx          # funil, anotações e último contato
+│       ├── PainelAbas.tsx        # agenda | contratos | leads
+│       ├── CRMLeads.tsx          # funil, anotações e último contato
+│       ├── Contratos.tsx         # lista + formulário de contrato
+│       ├── ModeloContrato.tsx    # editar as cláusulas do contrato base
+│       └── contratos/[id]/       # a via impressa (Salvar como PDF)
 ├── components/
 │   ├── CalendarioDisponibilidade.tsx  # calendário compartilhado (público e calculadora)
 │   └── ...                       # header, rodapé, galeria, calculadora
@@ -868,6 +985,8 @@ src/
     ├── pricing.ts                # motor de preços (espelha o n8n)
     ├── site-config.ts            # dados do sítio: endereço, estrutura, FAQ
     ├── fotos.ts                  # galeria: espaços e fotos
+    ├── contrato.ts               # cláusulas, extenso, parcelas (puro, testado)
+    ├── contratos.ts              # contratos e modelo no banco
     ├── notificacoes.ts           # texto dos avisos de WhatsApp (puro, testado)
     ├── avisos.ts                 # quando avisar a equipe e quem recebe
     ├── leads.ts                  # quando escrever para o CLIENTE, com as travas
@@ -903,6 +1022,15 @@ src/
   banco por fim de semana até achar os livres. Agora traz a janela inteira
   uma vez e decide em memória, com a mesma função pura que o calendário
   usa.
+- **Contrato emitido guarda cópia do próprio modelo.** Editar o contrato
+  base muda os próximos, nunca os que já foram enviados. E o que se
+  congela é o modelo com as `{{variaveis}}` dentro, não o texto já
+  preenchido — assim ainda dá para corrigir um CPF depois.
+- **`formatarBRL` usa espaço inquebrável; o contrato não.** U+00A0 é ótimo
+  na tela (impede "R$" de sobrar sozinho no fim da linha) e atrapalha num
+  texto que vai ser copiado para o WhatsApp. `dinheiro()`, em
+  `contrato.ts`, troca por espaço comum — foi o que fez cinco testes
+  falharem comparando strings visualmente idênticas.
 - **Módulo puro importa com `.ts` na frente.** `notificacoes.ts` escreve
   `from "./pricing.ts"` porque o `node --test` resolve ESM sem adivinhar
   extensão. É o que `allowImportingTsExtensions` no `tsconfig.json`

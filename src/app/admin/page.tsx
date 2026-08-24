@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { AlertTriangle, CalendarCheck, LogOut, TrendingUp, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarCheck,
+  FileSignature,
+  LogOut,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 import { sessaoAtual } from "@/lib/auth";
 import {
   getSupabase,
@@ -11,10 +18,13 @@ import {
 } from "@/lib/supabase";
 import { formatarBRL } from "@/lib/pricing";
 import { hojeISO } from "@/lib/ocupacao";
+import { lerModelo, listarContratos } from "@/lib/contratos";
 import { sair } from "./actions";
 import { CRMLeads } from "./CRMLeads";
 import { CalendarioAdmin, type Bloqueio } from "./CalendarioAdmin";
+import { Contratos } from "./Contratos";
 import { GerenciarReservas } from "./GerenciarReservas";
+import { ModeloContrato } from "./ModeloContrato";
 import { PainelAbas } from "./PainelAbas";
 
 export const metadata: Metadata = {
@@ -56,6 +66,14 @@ export default async function PaginaAdmin() {
       .from("datas_bloqueadas")
       .select("*")
       .order("data_inicio", { ascending: true }),
+  ]);
+
+  // Contratos e modelo vêm em paralelo com o resto: a aba nasce pronta,
+  // e tabela ainda não criada (falta rodar a 007) devolve lista vazia +
+  // o modelo do código, sem derrubar o painel inteiro.
+  const [contratos, modelo] = await Promise.all([
+    listarContratos(),
+    lerModelo(),
   ]);
 
   const orcamentos = (resOrcamentos.data ?? []) as Orcamento[];
@@ -193,6 +211,29 @@ export default async function PaginaAdmin() {
                   <div className="mt-5">
                     <GerenciarReservas reservas={reservas} />
                   </div>
+                </section>
+              ),
+            },
+            {
+              id: "contratos",
+              rotulo: "Contratos",
+              icone: <FileSignature className="size-4" aria-hidden />,
+              contador: contratos.filter((c) => c.status === "RASCUNHO").length,
+              conteudo: (
+                <section className="space-y-6">
+                  <div>
+                    <h2 className="font-display text-2xl font-semibold text-mata-900">
+                      Contratos
+                    </h2>
+                    <p className="mt-1 text-sm text-mata-600">
+                      O contrato de locação sai daqui pronto: nome, CPF, datas,
+                      horários, quantas pessoas, parcelas e hidromassagem entram
+                      no texto sozinhos, e os valores saem escritos por extenso.
+                      O modelo base é editável logo abaixo.
+                    </p>
+                  </div>
+                  <Contratos contratos={contratos} reservas={reservas} />
+                  <ModeloContrato modelo={modelo} />
                 </section>
               ),
             },

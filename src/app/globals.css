@@ -107,3 +107,54 @@ body {
 .surgir {
   animation: surgir 0.7s ease-out both;
 }
+
+/* ============================================================
+   Contrato impresso (/admin/contratos/<id>)
+
+   O contrato sai daqui pelo "Salvar como PDF" do navegador — não há
+   biblioteca de PDF no projeto, e não precisa haver: o Chrome imprime
+   A4 de verdade, com o texto selecionável, e a tipografia fica sob
+   controle do CSS em vez de ser recriada num dialeto próprio.
+
+   Regra da folha: só o documento vai para o papel. Barra de ações,
+   avisos e navegação somem.
+   ============================================================ */
+
+@media print {
+  /* A margem é do @page; a folha na tela imita esta medida. */
+  @page {
+    size: A4;
+    margin: 18mm 16mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  .nao-imprimir {
+    display: none !important;
+  }
+
+  .folha-contrato {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    max-width: none !important;
+    width: auto !important;
+  }
+
+  /* Cláusula partida entre duas páginas atrapalha a leitura e a
+     conferência. Quando não couber inteira, vai inteira para a próxima. */
+  .clausula {
+    break-inside: avoid;
+  }
+
+  /* Assinatura órfã numa página só é o clássico do contrato impresso. */
+  .assinaturas {
+    break-inside: avoid;
+    break-before: auto;
+  }
+}
